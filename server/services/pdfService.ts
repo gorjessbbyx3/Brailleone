@@ -263,20 +263,22 @@ Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
         height: 2000
       });
 
-      // Convert all pages
+      // Convert pages in smaller batches to avoid memory issues
+      const maxPages = 20; // Limit to 20 pages max for memory safety
       const pages = await convertToPng.bulk(-1, { responseType: "buffer" });
+      const limitedPages = pages.slice(0, maxPages);
       
-      console.log(`Converting ${pages.length} pages with OCR...`);
+      console.log(`Converting ${limitedPages.length} pages with OCR (limited from ${pages.length} for memory)...`);
       
       // Initialize Tesseract worker
       const worker = await createWorker('eng');
       const extractedTexts: string[] = [];
       
       // Process each page with OCR
-      for (let i = 0; i < pages.length; i++) {
+      for (let i = 0; i < limitedPages.length; i++) {
         try {
-          console.log(`OCR processing page ${i + 1}/${pages.length}...`);
-          const pageBuffer = pages[i].buffer;
+          console.log(`OCR processing page ${i + 1}/${limitedPages.length}...`);
+          const pageBuffer = limitedPages[i].buffer;
           if (!pageBuffer) {
             throw new Error(`No buffer for page ${i + 1}`);
           }
@@ -300,8 +302,8 @@ Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
       }
       
       return {
-        text: fullText,
-        pageCount: pages.length
+        text: fullText + (pages.length > maxPages ? `\n\n[Note: OCR processed ${maxPages} of ${pages.length} pages for memory efficiency]` : ''),
+        pageCount: limitedPages.length
       };
       
     } catch (error) {
