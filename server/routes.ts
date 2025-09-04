@@ -229,6 +229,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get file content for preview (streaming)
+  app.get('/api/conversions/:id/files/:type', async (req, res) => {
+    try {
+      const { id, type } = req.params;
+      const conversion = await storage.getConversion(id);
+      
+      if (!conversion) {
+        return res.status(404).json({ error: 'Conversion not found' });
+      }
+
+      let filePath: string | null = null;
+      
+      switch (type) {
+        case 'braille':
+          filePath = conversion.brailleFilePath;
+          break;
+        case 'cleaned':
+          filePath = conversion.cleanedTextPath;
+          break;
+        case 'original':
+          filePath = conversion.originalTextPath;
+          break;
+        default:
+          return res.status(400).json({ error: 'Invalid file type' });
+      }
+
+      if (!filePath) {
+        return res.status(404).json({ error: 'File not available' });
+      }
+
+      // Get file from object storage
+      const objectFile = await objectStorageService.getObjectEntityFile(filePath);
+      const [buffer] = await objectFile.download();
+      const textContent = buffer.toString('utf-8');
+      
+      res.set({
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'private, max-age=3600'
+      });
+
+      res.send(textContent);
+
+    } catch (error) {
+      console.error('Error fetching file content:', error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      return res.status(500).json({ error: 'Failed to fetch file content' });
+    }
+  });
+
   // Download converted file
   app.get("/api/conversions/:id/download/:type", async (req, res) => {
     try {

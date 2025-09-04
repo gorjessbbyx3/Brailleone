@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Download, FileText, BarChart3, Zap, Eye } from "lucide-react";
+import PreviewModal from "./PreviewModal";
 import { useQuery } from "@tanstack/react-query";
 import ComparisonSection from "./ComparisonSection";
 import type { Conversion } from "@shared/schema";
@@ -13,6 +14,7 @@ interface ResultsSectionProps {
 
 export default function ResultsSection({ conversion }: ResultsSectionProps) {
   const [activeTab, setActiveTab] = useState("summary");
+  const [showPreview, setShowPreview] = useState(false);
 
   // Fetch text content for comparison
   const { data: originalText } = useQuery({
@@ -104,14 +106,25 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
 
             {/* Download Options */}
             <div className="space-y-3">
-              <Button 
-                onClick={() => handleDownload('braille')}
-                className="w-full flex items-center justify-center space-x-2"
-                data-testid="button-download-braille"
-              >
-                <Download className="w-5 h-5" />
-                <span>Download Braille File (.brl)</span>
-              </Button>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <Button 
+                  onClick={() => setShowPreview(true)}
+                  variant="outline"
+                  className="flex items-center justify-center space-x-2"
+                  data-testid="button-preview"
+                >
+                  <Eye className="w-5 h-5" />
+                  <span>Preview</span>
+                </Button>
+                <Button 
+                  onClick={() => handleDownload('braille')}
+                  className="flex items-center justify-center space-x-2"
+                  data-testid="button-download-braille"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Download</span>
+                </Button>
+              </div>
               
               <div className="grid grid-cols-2 gap-3">
                 <Button 
@@ -146,6 +159,13 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      <PreviewModal
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        conversion={conversion}
+        onDownload={() => handleDownload('braille')}
+      />
     </Card>
   );
 }
