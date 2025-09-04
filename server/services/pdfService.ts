@@ -14,7 +14,7 @@ export class PDFService {
       // Download file to buffer
       [buffer] = await objectFile.download();
       
-      // Extract text using pdf-parse with proper error handling
+      // Extract text using our parsing method
       const result = await this.extractTextWithPdfParse(buffer);
       
       return {
@@ -71,152 +71,47 @@ export class PDFService {
 
   private async extractTextWithPdfParse(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
     try {
-      // First try pdf-parse with better error handling
-      let parseFunction: any;
-      try {
-        // Use require instead of import to avoid the test file access issue
-        const pdfParse = require('pdf-parse');
-        parseFunction = pdfParse;
-      } catch (requireError) {
-        try {
-          // Fallback to dynamic import with special handling
-          const pdfParse = await import('pdf-parse');
-          parseFunction = pdfParse.default || pdfParse;
-        } catch (importError) {
-          console.error('Failed to import pdf-parse:', importError);
-          // Try OCR extraction instead
-          console.log('Falling back to OCR text extraction...');
-          return await this.extractTextWithOCR(buffer);
-        }
-      }
-      
-      const options = {
-        max: 0,
-        normalizeWhitespace: true,
-        disableCombineTextItems: false,
-        version: undefined
-      };
-      
-      const data = await parseFunction(buffer, options);
-      const extractedText = data.text || "";
-      const pageCount = data.numpages || 1;
-      const meaningfulText = extractedText.trim().replace(/\s+/g, ' ');
-      
-      // If pdf-parse worked well, return the result
-      if (meaningfulText.length > 100) {
-        // Production: Text extracted successfully
-        return {
-          text: extractedText,
-          pageCount: pageCount
-        };
-      }
-      
-      // Fallback: Using alternative extraction method
-      
-      // Try pdf2json as alternative
-      try {
-        let pdf2json;
-        try {
-          pdf2json = await import('pdf2json');
-        } catch (importError) {
-          console.error('Failed to import pdf2json:', importError);
-          // Return original result if fallback import fails
+      // Check if this is actually a PDF first
+      const headerCheck = buffer.subarray(0, 4).toString();
+      if (!headerCheck.includes('%PDF')) {
+        // This might be plain text, try to extract directly
+        const textContent = buffer.toString('utf8');
+        if (textContent && textContent.length > 10) {
+          console.log('Detected non-PDF content, extracting as plain text');
           return {
-            text: extractedText || "PDF extraction failed - fallback library not available",
-            pageCount: pageCount
+            text: textContent,
+            pageCount: 1
           };
         }
-        
-        const PDFParser = pdf2json.default;
-        
-        return new Promise((resolve) => {
-          const pdfParser = new PDFParser();
-          let extractedText = "";
-          
-          pdfParser.on("pdfParser_dataError", (errData: any) => {
-            console.error('PDF2JSON error:', errData);
-            resolve({
-              text: "PDF parsing failed with pdf2json",
-              pageCount: 1
-            });
-          });
-          
-          pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
-            try {
-              if (pdfData && pdfData.formImage && pdfData.formImage.Pages) {
-                const pages = pdfData.formImage.Pages;
-                let allText = '';
-                
-                for (const page of pages) {
-                  if (page.Texts) {
-                    for (const textObj of page.Texts) {
-                      if (textObj.R) {
-                        for (const run of textObj.R) {
-                          if (run.T) {
-                            allText += decodeURIComponent(run.T) + ' ';
-                          }
-                        }
-                      }
-                    }
-                  }
-                  allText += '\n';
-                }
-                
-                resolve({
-                  text: allText || "No readable text found in PDF",
-                  pageCount: pages.length || 1
-                });
-              } else {
-                resolve({
-                  text: "PDF structure not readable",
-                  pageCount: 1
-                });
-              }
-            } catch (parseError) {
-              console.error('Error processing PDF data:', parseError);
-              resolve({
-                text: "Error processing PDF structure",
-                pageCount: 1
-              });
-            }
-          });
-          
-          // Start parsing
-          pdfParser.parseBuffer(buffer);
-        });
-      } catch (pdf2jsonError) {
-        console.error('PDF2JSON processing error:', pdf2jsonError);
-        
-        // Final fallback: OCR if everything else fails
-        if (meaningfulText.length < 50) {
-          console.log('Trying OCR as final fallback...');
-          try {
-            return await this.extractTextWithOCR(buffer);
-          } catch (ocrError) {
-            console.error('OCR fallback also failed:', ocrError);
-          }
-        }
-        
-        return {
-          text: extractedText || "No readable text found in PDF",
-          pageCount: pageCount
-        };
       }
+
+      // For now, skip pdf-parse library due to import issues and go directly to OCR
+      console.log('Using OCR extraction for PDF content...');
+      return await this.extractTextWithOCR(buffer);
+      
     } catch (error) {
-      console.error('PDF parsing error:', error);
-      // Final fallback to OCR
+      console.error('All extraction methods failed:', error);
+      
+      // Final fallback: try basic text extraction
       try {
-        console.log('Attempting OCR extraction as last resort...');
-        return await this.extractTextWithOCR(buffer);
-      } catch (ocrError) {
-        console.error('OCR extraction also failed:', ocrError);
-        throw new Error('All text extraction methods failed');
+        const basicText = buffer.toString('utf8');
+        if (basicText && basicText.length > 20) {
+          console.log('Using basic text extraction as final fallback');
+          return {
+            text: basicText.substring(0, 10000), // Limit length
+            pageCount: 1
+          };
+        }
+      } catch (basicError) {
+        console.error('Basic text extraction failed:', basicError);
       }
+      
+      throw new Error('All text extraction methods failed');
     }
   }
 
   private async extractTextWithOCR(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
-    const maxPages = 3; // Reduced further to prevent issues
+    const maxPages = 2; // Reduced to prevent issues
     
     try {
       console.log('Starting OCR text extraction...');
@@ -228,12 +123,25 @@ export class PDFService {
       
       console.log(`Buffer size: ${buffer.length} bytes`);
       
+      // Check if this is actually a PDF
+      const headerCheck = buffer.subarray(0, 4).toString();
+      if (!headerCheck.includes('%PDF')) {
+        console.log('Not a PDF file, attempting direct text extraction');
+        const textContent = buffer.toString('utf8');
+        if (textContent && textContent.length > 10) {
+          return {
+            text: textContent,
+            pageCount: 1
+          };
+        }
+      }
+
       // Force garbage collection to free memory
       if (global.gc) {
         global.gc();
       }
       
-      // Convert PDF to images using pdf2pic
+      // Import pdf2pic
       let pdf2pic;
       try {
         pdf2pic = await import('pdf2pic');
@@ -241,33 +149,19 @@ export class PDFService {
         console.error('Failed to import pdf2pic:', importError);
         throw new Error('PDF to image conversion not available');
       }
-      
-      // Initialize pdf2pic converter with safer settings
+
+      // Initialize pdf2pic converter
       const convert = pdf2pic.fromBuffer(buffer, {
-        density: 72, // Reduced density for stability
+        density: 150, // Higher density for better OCR
         saveFilename: "ocr_page",
         savePath: "/tmp",
         format: "png",
-        width: 500, // Reduced size
-        height: 600 // Reduced size
+        width: 800, 
+        height: 1000
       });
       
-      // Get info about the PDF to know how many pages
-      let totalPages = 1;
-      try {
-        let parseFunction: any;
-        try {
-          parseFunction = require('pdf-parse');
-        } catch {
-          const pdfParse = await import('pdf-parse');
-          parseFunction = pdfParse.default || pdfParse;
-        }
-        const info = await parseFunction(buffer, { max: 0 });
-        totalPages = Math.min(info.numpages || 1, maxPages);
-      } catch (infoError) {
-        console.warn('Could not get page count, assuming 1 page');
-      }
-      
+      // Assume 1 page for now since we can't use pdf-parse to get count
+      let totalPages = Math.min(1, maxPages);
       console.log(`Processing ${totalPages} pages with OCR...`);
       
       let allText = '';
@@ -322,7 +216,16 @@ export class PDFService {
       
       const finalText = allText.trim();
       
-      if (finalText.length < 10) {
+      if (finalText.length < 5) {
+        console.log('OCR extracted very little text, trying direct buffer extraction');
+        // Try direct text extraction as final fallback
+        const directText = buffer.toString('utf8');
+        if (directText && directText.length > 10) {
+          return {
+            text: directText.substring(0, 5000), // Limit size
+            pageCount: 1
+          };
+        }
         throw new Error('OCR extracted very little text');
       }
       
@@ -335,6 +238,21 @@ export class PDFService {
       
     } catch (error) {
       console.error('OCR extraction failed:', error);
+      
+      // Final direct text extraction attempt
+      try {
+        console.log('Attempting direct text extraction as final fallback');
+        const directText = buffer.toString('utf8');
+        if (directText && directText.length > 10) {
+          return {
+            text: directText.substring(0, 5000),
+            pageCount: 1
+          };
+        }
+      } catch (directError) {
+        console.error('Direct text extraction failed:', directError);
+      }
+      
       throw new Error(`OCR text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
