@@ -152,8 +152,8 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
           <TabsContent value="comparison" className="mt-6">
             <ComparisonSection
               conversion={conversion}
-              originalText={originalText?.content || ""}
-              brailleText={brailleText?.content || ""}
+              originalText={(originalText as any)?.content || ""}
+              brailleText={(brailleText as any)?.content || ""}
               lineValidation={conversion.lineValidations || []}
             />
           </TabsContent>

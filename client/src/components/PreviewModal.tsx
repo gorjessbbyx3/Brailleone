@@ -24,12 +24,12 @@ interface PreviewModalProps {
   conversion: {
     id: string;
     fileName: string;
-    brailleFilePath?: string;
-    cleanedTextPath?: string;
-    originalTextPath?: string;
-    wordCount?: number;
-    braillePages?: number;
-    accuracyScore?: number;
+    brailleFilePath?: string | null;
+    cleanedTextPath?: string | null;
+    originalTextPath?: string | null;
+    wordCount?: number | null;
+    braillePages?: number | null;
+    accuracyScore?: number | null;
   };
   onDownload?: () => void;
 }
