@@ -1,0 +1,109 @@
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Check, Download, FileText, BarChart3, Zap } from "lucide-react";
+import type { Conversion } from "@shared/schema";
+
+interface ResultsSectionProps {
+  conversion: Conversion;
+}
+
+export default function ResultsSection({ conversion }: ResultsSectionProps) {
+  const handleDownload = async (type: 'braille' | 'text' | 'report') => {
+    try {
+      window.open(`/api/conversions/${conversion.id}/download/${type}`, '_blank');
+    } catch (error) {
+      console.error("Download error:", error);
+    }
+  };
+
+  return (
+    <Card className="mb-8" data-testid="results-section">
+      <CardContent className="p-6">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-8 h-8 bg-success rounded-full flex items-center justify-center">
+            <Check className="w-4 h-4 text-white" />
+          </div>
+          <h3 className="text-xl font-semibold text-card-foreground">Conversion Complete</h3>
+        </div>
+
+        {/* Conversion Statistics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-muted/50 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-foreground" data-testid="text-total-pages">
+              {conversion.totalPages || 0}
+            </div>
+            <div className="text-sm text-muted-foreground">Pages Processed</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-foreground" data-testid="text-word-count">
+              {conversion.wordCount?.toLocaleString() || 0}
+            </div>
+            <div className="text-sm text-muted-foreground">Words Converted</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-foreground" data-testid="text-braille-pages">
+              {conversion.braillePages || 0}
+            </div>
+            <div className="text-sm text-muted-foreground">Braille Pages</div>
+          </div>
+          <div className="bg-muted/50 rounded-lg p-4 text-center">
+            <div className="text-2xl font-bold text-success" data-testid="text-accuracy-score">
+              {conversion.accuracyScore || 0}%
+            </div>
+            <div className="text-sm text-muted-foreground">AI Accuracy</div>
+          </div>
+        </div>
+
+        {/* AI Processing Summary */}
+        {conversion.aiEnhancements && conversion.aiEnhancements.length > 0 && (
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-6">
+            <h4 className="font-medium text-foreground mb-2 flex items-center">
+              <Zap className="w-4 h-4 mr-2 text-primary" />
+              AI Enhancement Summary
+            </h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              {conversion.aiEnhancements.map((enhancement, index) => (
+                <li key={index} data-testid={`text-enhancement-${index}`}>
+                  • {enhancement}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Download Options */}
+        <div className="space-y-3">
+          <Button 
+            onClick={() => handleDownload('braille')}
+            className="w-full flex items-center justify-center space-x-2"
+            data-testid="button-download-braille"
+          >
+            <Download className="w-5 h-5" />
+            <span>Download Braille File (.brl)</span>
+          </Button>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <Button 
+              onClick={() => handleDownload('text')}
+              variant="secondary"
+              className="flex items-center justify-center space-x-2"
+              data-testid="button-download-text"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Clean Text</span>
+            </Button>
+            <Button 
+              onClick={() => handleDownload('report')}
+              variant="outline"
+              className="flex items-center justify-center space-x-2"
+              data-testid="button-download-report"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>AI Report</span>
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
