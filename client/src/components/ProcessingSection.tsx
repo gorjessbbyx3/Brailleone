@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Zap, Check, Circle, FileText, Eye } from "lucide-react";
+import { Zap, Check, Circle, FileText, Eye, Navigation } from "lucide-react";
 import LiveProcessingModal from "./LiveProcessingModal";
 import type { Conversion } from "@shared/schema";
 
@@ -43,8 +43,14 @@ export default function ProcessingSection({ conversion }: ProcessingSectionProps
     {
       name: "AI Quality Validation",
       description: "Final accuracy check and optimization",
-      threshold: 100,
+      threshold: 95,
       icon: Check,
+    },
+    {
+      name: "Chapter Analysis & Navigation",
+      description: "AI-powered document structure analysis and chapter summaries",
+      threshold: 100,
+      icon: Navigation,
     },
   ];
 

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Download, FileText, BarChart3, Zap, Eye } from "lucide-react";
+import { Check, Download, FileText, BarChart3, Zap, Eye, Navigation } from "lucide-react";
 import PreviewModal from "./PreviewModal";
+import ChapterNavigationPanel from "./ChapterNavigationPanel";
 import { useQuery } from "@tanstack/react-query";
 import ComparisonSection from "./ComparisonSection";
 import type { Conversion } from "@shared/schema";
@@ -46,7 +47,7 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="summary" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span>Summary & Downloads</span>
@@ -54,6 +55,10 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
             <TabsTrigger value="comparison" className="flex items-center space-x-2">
               <Eye className="w-4 h-4" />
               <span>Side-by-Side Comparison</span>
+            </TabsTrigger>
+            <TabsTrigger value="chapters" className="flex items-center space-x-2">
+              <Navigation className="w-4 h-4" />
+              <span>Chapter Navigation</span>
             </TabsTrigger>
           </TabsList>
 
@@ -155,6 +160,18 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
               originalText={(originalText as any)?.content || ""}
               brailleText={(brailleText as any)?.content || ""}
               lineValidation={conversion.lineValidations || []}
+            />
+          </TabsContent>
+
+          <TabsContent value="chapters" className="mt-6">
+            <ChapterNavigationPanel
+              chapters={conversion.chapters || []}
+              documentSummary={conversion.documentSummary}
+              keyTopics={conversion.keyTopics || []}
+              onChapterClick={(chapter) => {
+                // TODO: Scroll to chapter in preview or comparison view
+                console.log('Navigate to chapter:', chapter.title);
+              }}
             />
           </TabsContent>
         </Tabs>
