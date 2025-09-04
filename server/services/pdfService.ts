@@ -1,10 +1,14 @@
 import { File } from "@google-cloud/storage";
-import fetch from "node-fetch";
 
-// Dynamic import for pdf-parse to avoid initialization issues
-const getPdfParse = async () => {
-  const pdfParse = await import("pdf-parse");
-  return pdfParse.default || pdfParse;
+// Use dynamic import to avoid initialization issues
+const loadPdfParse = async () => {
+  try {
+    const pdfParse = await import("pdf-parse");
+    return pdfParse.default;
+  } catch (error) {
+    console.error("Failed to load pdf-parse:", error);
+    throw error;
+  }
 };
 
 export interface TextExtractionResult {
@@ -20,8 +24,8 @@ export class PDFService {
       const [buffer] = await objectFile.download();
       
       // Extract text using pdf-parse
-      const pdf = await getPdfParse();
-      const data = await pdf(buffer);
+      const pdfParse = await loadPdfParse();
+      const data = await pdfParse(buffer);
       
       return {
         text: data.text,
@@ -46,8 +50,8 @@ export class PDFService {
       const buffer = Buffer.from(await response.arrayBuffer());
       
       // Extract text using pdf-parse
-      const pdf = await getPdfParse();
-      const data = await pdf(buffer);
+      const pdfParse = await loadPdfParse();
+      const data = await pdfParse(buffer);
       
       return {
         text: data.text,
