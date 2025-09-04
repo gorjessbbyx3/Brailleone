@@ -167,13 +167,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // For database storage, clear failed conversions
       if (process.env.DATABASE_URL) {
-        const { DatabaseStorage } = await import("./dbStorage");
-        const dbStorage = new DatabaseStorage();
-        // Clear failed and error status conversions
-        const result = await (dbStorage as any).db.execute(
-          `DELETE FROM conversions WHERE status IN ('failed', 'error')`
-        );
-        // Failed conversions cleared
+        try {
+          const { DatabaseStorage } = await import("./dbStorage");
+          const dbStorage = new DatabaseStorage();
+          // Clear failed and error status conversions using proper Drizzle ORM methods
+          const { eq, or } = await import("drizzle-orm");
+          const { conversions } = await import("../shared/schema");
+          await (dbStorage as any).db.delete(conversions).where(
+            or(eq(conversions.status, 'failed'), eq(conversions.status, 'error'))
+          );
+        } catch (dbError) {
+          console.error("Database error clearing failed conversions:", dbError);
+          throw new Error("Database operation failed");
+        }
       }
       
       res.json({ message: "Failed conversions cleared successfully" });
@@ -367,15 +373,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Global function to broadcast live updates to WebSocket clients
   global.broadcastLiveUpdate = (conversionId: string, update: any) => {
-    wss.clients.forEach((client: WebSocket) => {
-      if (client.readyState === WebSocket.OPEN && (client as any).conversionId === conversionId) {
-        client.send(JSON.stringify({
-          type: 'liveUpdate',
-          conversionId,
-          ...update
-        }));
-      }
-    });
+    try {
+      wss.clients.forEach((client: WebSocket) => {
+        try {
+          if (client.readyState === WebSocket.OPEN && (client as any).conversionId === conversionId) {
+            client.send(JSON.stringify({
+              type: 'liveUpdate',
+              conversionId,
+              ...update
+            }));
+          }
+        } catch (clientError) {
+          console.error(`Error sending message to WebSocket client:`, clientError);
+        }
+      });
+    } catch (error) {
+      console.error('Error broadcasting live update:', error);
+    }
   };
 
   return httpServer;
@@ -439,7 +453,17 @@ async function processConversion(conversionId: string) {
       onProgress: (progress: number) => {
         storage.updateConversion(conversionId, {
           progress: Math.round(30 + (progress * 0.4)) // 30-70%
-        }).catch(console.error);
+        }).catch((err) => {
+          console.error('Error updating AI progress:', err);
+          // Broadcast error to live updates if available
+          if (typeof global.broadcastLiveUpdate === 'function') {
+            global.broadcastLiveUpdate(conversionId, {
+              stage: 'error',
+              message: 'Progress update failed',
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
       }
     });
 
@@ -464,7 +488,17 @@ async function processConversion(conversionId: string) {
       onProgress: (progress: number) => {
         storage.updateConversion(conversionId, {
           progress: Math.round(75 + (progress * 0.15)) // 75-90%
-        }).catch(console.error);
+        }).catch((err) => {
+          console.error('Error updating Braille conversion progress:', err);
+          // Broadcast error to live updates if available
+          if (typeof global.broadcastLiveUpdate === 'function') {
+            global.broadcastLiveUpdate(conversionId, {
+              stage: 'error',
+              message: 'Braille conversion progress update failed',
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
       }
     });
 
@@ -542,22 +576,27 @@ async function processConversion(conversionId: string) {
 }
 
 async function saveTextToStorage(content: string, fileName: string): Promise<string> {
-  // Get upload URL for the text file
-  const uploadUrl = await objectStorageService.getObjectEntityUploadURL();
-  
-  // Upload the content
-  const response = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-    body: content,
-  });
+  try {
+    // Get upload URL for the text file
+    const uploadUrl = await objectStorageService.getObjectEntityUploadURL();
+    
+    // Upload the content
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: content,
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to upload text file: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to upload text file: ${response.status} ${response.statusText}`);
+    }
+
+    // Return normalized path
+    return objectStorageService.normalizeObjectEntityPath(uploadUrl);
+  } catch (error) {
+    console.error('Error in saveTextToStorage:', error);
+    throw new Error(`Failed to save text file ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  // Return normalized path
-  return objectStorageService.normalizeObjectEntityPath(uploadUrl);
 }

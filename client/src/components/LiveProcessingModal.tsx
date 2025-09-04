@@ -32,7 +32,11 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
 
     return () => {
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.close();
+        } catch (closeError) {
+          console.error('Error closing WebSocket:', closeError);
+        }
         wsRef.current = null;
       }
     };
@@ -59,10 +63,12 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
         
         // Subscribe to this conversion's updates
         try {
-          wsRef.current?.send(JSON.stringify({
-            type: 'subscribe',
-            conversionId
-          }));
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+              type: 'subscribe',
+              conversionId
+            }));
+          }
         } catch (sendError) {
           console.error('Error sending WebSocket message:', sendError);
           setError("Failed to subscribe to updates");
@@ -96,15 +102,30 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
         }
       };
 
-      wsRef.current.onclose = () => {
-        console.log("WebSocket disconnected");
+      wsRef.current.onclose = (event) => {
+        console.log("WebSocket disconnected", event);
         setIsConnected(false);
+        
+        // If the connection was closed unexpectedly, show an error
+        if (event.code !== 1000 && event.code !== 1001) {
+          setError(`Connection lost unexpectedly (code: ${event.code})`);
+        }
       };
 
       wsRef.current.onerror = (error) => {
         console.error("WebSocket error:", error);
         setError("Connection error - live updates may not be available");
         setIsConnected(false);
+        
+        // Clean up the WebSocket reference if there's an error
+        if (wsRef.current) {
+          try {
+            wsRef.current.close();
+          } catch (closeError) {
+            console.error('Error closing WebSocket after error:', closeError);
+          }
+          wsRef.current = null;
+        }
       };
 
     } catch (error) {

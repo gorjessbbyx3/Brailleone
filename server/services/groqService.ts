@@ -168,17 +168,30 @@ ${chunks[i]}`;
     options: { maxTokens?: number; temperature?: number } = {}
   ): Promise<string> {
     if (!this.groq) {
-      throw new Error("Groq API not available");
+      throw new Error("Groq API not available - please check GROQ_API_KEY environment variable");
     }
 
-    const response = await this.groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: options.temperature || 0.1,
-      max_tokens: options.maxTokens || 2048,
-    });
+    try {
+      const response = await this.groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: options.temperature || 0.1,
+        max_tokens: options.maxTokens || 2048,
+      });
 
-    return response.choices[0]?.message?.content || "";
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No content received from Groq API");
+      }
+      
+      return content;
+    } catch (error) {
+      console.error('Error making Groq API request:', error);
+      if (error instanceof Error) {
+        throw new Error(`Groq API error: ${error.message}`);
+      }
+      throw new Error('Groq API request failed');
+    }
   }
 
   async validateBrailleQuality(originalText: string, brailleText: string): Promise<QualityValidationResult> {

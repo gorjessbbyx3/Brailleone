@@ -44,32 +44,58 @@ export class ChapterService {
 
     onProgress?.(0.1);
 
-    // Step 1: Detect chapter structure
-    const chapters = await this.detectChapters(text, { conversionId });
-    onProgress?.(0.5);
+    try {
+      // Step 1: Detect chapter structure
+      const chapters = await this.detectChapters(text, { conversionId });
+      onProgress?.(0.5);
 
-    // Step 2: Generate chapter summaries
-    await this.generateChapterSummaries(chapters, text, { conversionId });
-    onProgress?.(0.8);
+      // Step 2: Generate chapter summaries
+      await this.generateChapterSummaries(chapters, text, { conversionId });
+      onProgress?.(0.8);
 
-    // Step 3: Generate document summary and key topics
-    const { documentSummary, keyTopics } = await this.generateDocumentSummary(text, chapters, { conversionId });
-    onProgress?.(1.0);
+      // Step 3: Generate document summary and key topics
+      const { documentSummary, keyTopics } = await this.generateDocumentSummary(text, chapters, { conversionId });
+      onProgress?.(1.0);
 
-    if (conversionId && global.broadcastLiveUpdate) {
-      global.broadcastLiveUpdate(conversionId, {
-        stage: 'chapter_analysis',
-        message: `Document analysis completed!`,
-        details: `Found ${chapters.length} chapters, generated summaries and navigation`,
-        timestamp: new Date().toISOString()
-      });
+      if (conversionId && global.broadcastLiveUpdate) {
+        global.broadcastLiveUpdate(conversionId, {
+          stage: 'chapter_analysis',
+          message: `Document analysis completed!`,
+          details: `Found ${chapters.length} chapters, generated summaries and navigation`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      return {
+        chapters,
+        documentSummary,
+        keyTopics
+      };
+    } catch (error) {
+      console.error('Error in document analysis:', error);
+      // Return a fallback structure
+      const fallbackChapters: Chapter[] = [{
+        id: 'chapter-1',
+        title: 'Document Content',
+        summary: 'Full document content (chapter analysis failed)',
+        keyTopics: ['Document content']
+      }];
+      
+      if (conversionId && global.broadcastLiveUpdate) {
+        global.broadcastLiveUpdate(conversionId, {
+          stage: 'chapter_analysis',
+          message: 'Chapter analysis failed, using fallback structure',
+          details: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      return {
+        chapters: fallbackChapters,
+        documentSummary: 'Document analysis failed - manual review recommended',
+        keyTopics: ['Document content']
+      };
     }
-
-    return {
-      chapters,
-      documentSummary,
-      keyTopics
-    };
   }
 
   private async detectChapters(text: string, options: { conversionId?: string }): Promise<Chapter[]> {

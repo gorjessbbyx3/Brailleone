@@ -69,7 +69,14 @@ export class PDFService {
   private async extractTextWithPdfParse(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
     try {
       // First try pdf-parse
-      const pdfParse = await import('pdf-parse');
+      let pdfParse;
+      try {
+        pdfParse = await import('pdf-parse');
+      } catch (importError) {
+        console.error('Failed to import pdf-parse:', importError);
+        throw new Error('PDF parsing library not available');
+      }
+      
       const parseFunction = pdfParse.default || pdfParse;
       
       const options = {
@@ -97,7 +104,18 @@ export class PDFService {
       
       // Try pdf2json as alternative
       try {
-        const pdf2json = await import('pdf2json');
+        let pdf2json;
+        try {
+          pdf2json = await import('pdf2json');
+        } catch (importError) {
+          console.error('Failed to import pdf2json:', importError);
+          // Return original result if fallback import fails
+          return {
+            text: extractedText || "PDF extraction failed - fallback library not available",
+            pageCount: pageCount
+          };
+        }
+        
         const PDFParser = pdf2json.default;
         
         return new Promise((resolve) => {
