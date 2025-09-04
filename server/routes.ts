@@ -154,6 +154,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get original text for comparison
+  app.get("/api/conversions/:id/text/:type", async (req, res) => {
+    try {
+      const { id, type } = req.params;
+      const conversion = await storage.getConversion(id);
+      
+      if (!conversion) {
+        return res.status(404).json({ error: "Conversion not found" });
+      }
+
+      let filePath: string | null = null;
+      
+      switch (type) {
+        case "original":
+          filePath = conversion.originalTextPath;
+          break;
+        case "cleaned":
+          filePath = conversion.cleanedTextPath;
+          break;
+        case "braille":
+          filePath = conversion.brailleFilePath;
+          break;
+        default:
+          return res.status(400).json({ error: "Invalid text type" });
+      }
+
+      if (!filePath) {
+        return res.status(404).json({ error: "Text not available" });
+      }
+
+      // Get text content from storage
+      const objectFile = await objectStorageService.getObjectEntityFile(filePath);
+      const [buffer] = await objectFile.download();
+      const textContent = buffer.toString('utf-8');
+      
+      res.json({ content: textContent });
+      
+    } catch (error) {
+      console.error("Error retrieving text:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: "Text not found" });
+      }
+      res.status(500).json({ error: "Failed to retrieve text" });
+    }
+  });
+
   // Download converted file
   app.get("/api/conversions/:id/download/:type", async (req, res) => {
     try {
@@ -303,7 +349,7 @@ async function processConversion(conversionId: string) {
 
     // Stage 4: AI Quality Validation
     await storage.updateConversion(conversionId, {
-      currentStage: "AI Quality Validation",
+      currentStage: "AI Line-by-Line Validation",
       progress: 95
     });
 
@@ -318,6 +364,7 @@ async function processConversion(conversionId: string) {
       currentStage: "Completed",
       progress: 100,
       accuracyScore: qualityResult.accuracyScore,
+      lineValidations: qualityResult.lineValidations,
       aiReportPath,
       completedAt: new Date()
     });

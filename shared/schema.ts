@@ -17,6 +17,13 @@ export const conversions = pgTable("conversions", {
   braillePages: integer("braille_pages"),
   accuracyScore: integer("accuracy_score"), // 0-100
   aiEnhancements: json("ai_enhancements").$type<string[]>(),
+  lineValidations: json("line_validations").$type<Array<{
+    lineNumber: number;
+    originalLine: string;
+    brailleLine: string;
+    accuracy: number;
+    issues?: string[];
+  }>>(),
   originalTextPath: text("original_text_path"),
   cleanedTextPath: text("cleaned_text_path"),
   brailleFilePath: text("braille_file_path"),

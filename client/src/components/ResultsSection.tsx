@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Download, FileText, BarChart3, Zap } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Check, Download, FileText, BarChart3, Zap, Eye } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import ComparisonSection from "./ComparisonSection";
 import type { Conversion } from "@shared/schema";
 
 interface ResultsSectionProps {
@@ -8,6 +12,19 @@ interface ResultsSectionProps {
 }
 
 export default function ResultsSection({ conversion }: ResultsSectionProps) {
+  const [activeTab, setActiveTab] = useState("summary");
+
+  // Fetch text content for comparison
+  const { data: originalText } = useQuery({
+    queryKey: ['/api/conversions', conversion.id, 'text', 'cleaned'],
+    enabled: activeTab === "comparison" && !!conversion.cleanedTextPath,
+  });
+
+  const { data: brailleText } = useQuery({
+    queryKey: ['/api/conversions', conversion.id, 'text', 'braille'],
+    enabled: activeTab === "comparison" && !!conversion.brailleFilePath,
+  });
+
   const handleDownload = async (type: 'braille' | 'text' | 'report') => {
     try {
       window.open(`/api/conversions/${conversion.id}/download/${type}`, '_blank');
@@ -25,6 +42,20 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
           </div>
           <h3 className="text-xl font-semibold text-card-foreground">Conversion Complete</h3>
         </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="summary" className="flex items-center space-x-2">
+              <BarChart3 className="w-4 h-4" />
+              <span>Summary & Downloads</span>
+            </TabsTrigger>
+            <TabsTrigger value="comparison" className="flex items-center space-x-2">
+              <Eye className="w-4 h-4" />
+              <span>Side-by-Side Comparison</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="summary" className="mt-6">
 
         {/* Conversion Statistics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -71,38 +102,49 @@ export default function ResultsSection({ conversion }: ResultsSectionProps) {
           </div>
         )}
 
-        {/* Download Options */}
-        <div className="space-y-3">
-          <Button 
-            onClick={() => handleDownload('braille')}
-            className="w-full flex items-center justify-center space-x-2"
-            data-testid="button-download-braille"
-          >
-            <Download className="w-5 h-5" />
-            <span>Download Braille File (.brl)</span>
-          </Button>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <Button 
-              onClick={() => handleDownload('text')}
-              variant="secondary"
-              className="flex items-center justify-center space-x-2"
-              data-testid="button-download-text"
-            >
-              <FileText className="w-4 h-4" />
-              <span>Clean Text</span>
-            </Button>
-            <Button 
-              onClick={() => handleDownload('report')}
-              variant="outline"
-              className="flex items-center justify-center space-x-2"
-              data-testid="button-download-report"
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>AI Report</span>
-            </Button>
-          </div>
-        </div>
+            {/* Download Options */}
+            <div className="space-y-3">
+              <Button 
+                onClick={() => handleDownload('braille')}
+                className="w-full flex items-center justify-center space-x-2"
+                data-testid="button-download-braille"
+              >
+                <Download className="w-5 h-5" />
+                <span>Download Braille File (.brl)</span>
+              </Button>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <Button 
+                  onClick={() => handleDownload('text')}
+                  variant="secondary"
+                  className="flex items-center justify-center space-x-2"
+                  data-testid="button-download-text"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Clean Text</span>
+                </Button>
+                <Button 
+                  onClick={() => handleDownload('report')}
+                  variant="outline"
+                  className="flex items-center justify-center space-x-2"
+                  data-testid="button-download-report"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>AI Report</span>
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="comparison" className="mt-6">
+            <ComparisonSection
+              conversion={conversion}
+              originalText={originalText?.content || ""}
+              brailleText={brailleText?.content || ""}
+              lineValidation={conversion.lineValidations || []}
+            />
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

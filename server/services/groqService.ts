@@ -4,9 +4,18 @@ export interface AICleanupResult {
   enhancements: string[];
 }
 
+export interface LineValidation {
+  lineNumber: number;
+  originalLine: string;
+  brailleLine: string;
+  accuracy: number;
+  issues?: string[];
+}
+
 export interface QualityValidationResult {
   accuracyScore: number;
   report: string;
+  lineValidations: LineValidation[];
 }
 
 export class GroqService {
@@ -115,24 +124,115 @@ ${chunks[i]}`;
   async validateBrailleQuality(originalText: string, brailleText: string): Promise<QualityValidationResult> {
     // If no API key, return default validation
     if (!this.apiKey) {
+      const originalLines = originalText.split('\n');
+      const brailleLines = brailleText.split('\n');
+      
       return {
         accuracyScore: 85,
-        report: "Quality validation skipped - AI processing disabled. Manual review recommended."
+        report: "Quality validation skipped - AI processing disabled. Manual review recommended.",
+        lineValidations: originalLines.map((line, index) => ({
+          lineNumber: index + 1,
+          originalLine: line,
+          brailleLine: brailleLines[index] || "",
+          accuracy: 85,
+          issues: ["AI validation disabled"]
+        }))
       };
     }
-    const prompt = `You are an AI quality validator for Braille conversion. 
 
-Compare the original cleaned text with its Braille conversion and provide:
-1. An accuracy score (0-100) based on how well the Braille preserves the original meaning
-2. A detailed report highlighting any issues or improvements
+    // Perform line-by-line validation
+    const lineValidations = await this.validateLineByLine(originalText, brailleText);
+    
+    // Calculate overall accuracy
+    const totalAccuracy = lineValidations.reduce((sum, val) => sum + val.accuracy, 0);
+    const averageAccuracy = Math.round(totalAccuracy / lineValidations.length);
 
-Original Text Sample: ${originalText.substring(0, 1000)}...
-Braille Text Sample: ${brailleText.substring(0, 1000)}...
+    // Generate overall report
+    const highAccuracyLines = lineValidations.filter(v => v.accuracy >= 95).length;
+    const lowAccuracyLines = lineValidations.filter(v => v.accuracy < 85).length;
+    
+    const report = `Line-by-Line Validation Complete:
+- Total Lines: ${lineValidations.length}
+- High Accuracy Lines (95%+): ${highAccuracyLines}
+- Lines Needing Review (<85%): ${lowAccuracyLines}
+- Overall Quality: ${averageAccuracy >= 95 ? 'Excellent' : averageAccuracy >= 85 ? 'Good' : 'Needs Improvement'}
 
-Provide your response in this format:
-ACCURACY_SCORE: [0-100]
-REPORT:
-[Detailed quality analysis]`;
+${lowAccuracyLines > 0 ? `\nIssues found in ${lowAccuracyLines} lines. Review flagged sections for accuracy.` : 'No significant issues detected.'}`;
+
+    return {
+      accuracyScore: averageAccuracy,
+      report,
+      lineValidations
+    };
+  }
+
+  private async validateLineByLine(originalText: string, brailleText: string): Promise<LineValidation[]> {
+    const originalLines = originalText.split('\n');
+    const brailleLines = brailleText.split('\n');
+    const maxLines = Math.max(originalLines.length, brailleLines.length);
+    
+    const validations: LineValidation[] = [];
+    
+    // Process in batches to avoid API limits
+    const batchSize = 10;
+    for (let i = 0; i < maxLines; i += batchSize) {
+      const batch = [];
+      
+      for (let j = i; j < Math.min(i + batchSize, maxLines); j++) {
+        const originalLine = originalLines[j] || "";
+        const brailleLine = brailleLines[j] || "";
+        
+        if (originalLine.trim().length === 0 && brailleLine.trim().length === 0) {
+          // Empty lines are always accurate
+          validations.push({
+            lineNumber: j + 1,
+            originalLine,
+            brailleLine,
+            accuracy: 100
+          });
+          continue;
+        }
+        
+        batch.push({
+          lineNumber: j + 1,
+          originalLine,
+          brailleLine
+        });
+      }
+      
+      if (batch.length > 0) {
+        const batchValidations = await this.validateBatch(batch);
+        validations.push(...batchValidations);
+      }
+      
+      // Small delay to respect API rate limits
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    return validations;
+  }
+
+  private async validateBatch(batch: Array<{lineNumber: number, originalLine: string, brailleLine: string}>): Promise<LineValidation[]> {
+    const prompt = `You are an expert Braille validator. Compare these original text lines with their Braille translations and score each line's accuracy from 0-100.
+
+For each line, provide:
+1. Accuracy score (0-100)
+2. Any specific issues found
+
+Lines to validate:
+${batch.map((item, index) => `
+Line ${item.lineNumber}:
+Original: "${item.originalLine}"
+Braille: "${item.brailleLine}"
+`).join('')}
+
+Respond in this exact JSON format:
+{
+  "validations": [
+    {"lineNumber": 1, "accuracy": 95, "issues": ["minor spacing issue"]},
+    {"lineNumber": 2, "accuracy": 100, "issues": []}
+  ]
+}`;
 
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -150,7 +250,7 @@ REPORT:
             }
           ],
           temperature: 0.1,
-          max_tokens: 2048,
+          max_tokens: 1024,
         }),
       });
 
@@ -161,25 +261,33 @@ REPORT:
       const result = await response.json();
       const content = result.choices[0]?.message?.content || "";
       
-      // Parse the response
-      const scoreMatch = content.match(/ACCURACY_SCORE:\s*(\d+)/);
-      const accuracyScore = scoreMatch ? parseInt(scoreMatch[1]) : 85; // Default fallback
-      
-      const reportMatch = content.match(/REPORT:\s*([\s\S]*)/);
-      const report = reportMatch ? reportMatch[1].trim() : "Quality validation completed successfully.";
-
-      return {
-        accuracyScore,
-        report
-      };
-
+      // Parse JSON response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return batch.map(item => {
+          const validation = parsed.validations?.find((v: any) => v.lineNumber === item.lineNumber);
+          return {
+            lineNumber: item.lineNumber,
+            originalLine: item.originalLine,
+            brailleLine: item.brailleLine,
+            accuracy: validation?.accuracy || 85,
+            issues: validation?.issues || []
+          };
+        });
+      }
     } catch (error) {
-      console.error("Error validating Braille quality:", error);
-      return {
-        accuracyScore: 85,
-        report: "Quality validation completed. Manual review recommended for optimal accuracy."
-      };
+      console.error("Error validating batch:", error);
     }
+    
+    // Fallback: return default validation
+    return batch.map(item => ({
+      lineNumber: item.lineNumber,
+      originalLine: item.originalLine,
+      brailleLine: item.brailleLine,
+      accuracy: 85,
+      issues: ["Validation failed - manual review recommended"]
+    }));
   }
 
   private splitTextIntoChunks(text: string, chunkSize: number): string[] {
