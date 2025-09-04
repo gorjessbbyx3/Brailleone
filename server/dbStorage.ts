@@ -55,4 +55,8 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
     return result;
   }
+
+  async clearAllConversions(): Promise<void> {
+    await db.delete(conversions);
+  }
 }

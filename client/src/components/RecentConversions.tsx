@@ -37,6 +37,27 @@ export default function RecentConversions({ conversions }: RecentConversionsProp
     }
   };
 
+  const handleClearAll = async () => {
+    try {
+      await apiRequest("DELETE", "/api/conversions/all");
+      
+      // Refresh the conversions list
+      queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
+      
+      toast({
+        title: "History Cleared", 
+        description: "All conversion history has been removed.",
+      });
+    } catch (error) {
+      console.error("Error clearing all conversions:", error);
+      toast({
+        title: "Clear Failed",
+        description: "Could not clear conversion history. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatTimeAgo = (date: Date | string) => {
     const now = new Date();
     const past = new Date(date);
@@ -73,18 +94,30 @@ export default function RecentConversions({ conversions }: RecentConversionsProp
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-card-foreground">Recent Conversions</h3>
-          {failedCount > 0 && (
+          <div className="flex items-center space-x-2">
+            {failedCount > 0 && (
+              <Button
+                onClick={handleClearFailed}
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive/80 border-destructive/20"
+                data-testid="button-clear-failed"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear Failed ({failedCount})
+              </Button>
+            )}
             <Button
-              onClick={handleClearFailed}
+              onClick={handleClearAll}
               variant="outline"
               size="sm"
-              className="text-destructive hover:text-destructive/80 border-destructive/20"
-              data-testid="button-clear-failed"
+              className="text-muted-foreground hover:text-foreground border-border"
+              data-testid="button-clear-all"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Clear Failed ({failedCount})
+              Clear History
             </Button>
-          )}
+          </div>
         </div>
         
         <div className="space-y-3">

@@ -183,6 +183,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear all conversions
+  app.delete("/api/conversions/all", async (req, res) => {
+    try {
+      await storage.clearAllConversions();
+      res.json({ message: "All conversions cleared successfully" });
+    } catch (error) {
+      console.error("Error clearing all conversions:", error);
+      res.status(500).json({ error: "Failed to clear all conversions" });
+    }
+  });
+
   // Get original text for comparison
   app.get("/api/conversions/:id/text/:type", async (req, res) => {
     try {

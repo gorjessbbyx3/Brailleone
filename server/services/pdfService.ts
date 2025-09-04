@@ -57,7 +57,12 @@ export class PDFService {
       const pdfParse = await import('pdf-parse');
       const parseFunction = pdfParse.default || pdfParse;
       
-      const data = await parseFunction(buffer);
+      // Add memory management options to avoid test file access issues
+      const options = {
+        max: 0, // Disable maximum pages limit to prevent memory constraints
+      };
+      
+      const data = await parseFunction(buffer, options);
       
       return {
         text: data.text || "",

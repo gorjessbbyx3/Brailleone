@@ -11,6 +11,7 @@ export interface IStorage {
   getConversion(id: string): Promise<Conversion | undefined>;
   updateConversion(id: string, updates: Partial<Conversion>): Promise<Conversion>;
   getRecentConversions(limit?: number): Promise<Conversion[]>;
+  clearAllConversions(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -87,6 +88,10 @@ export class MemStorage implements IStorage {
       .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
       .slice(0, limit);
     return conversions;
+  }
+
+  async clearAllConversions(): Promise<void> {
+    this.conversions.clear();
   }
 }
 
