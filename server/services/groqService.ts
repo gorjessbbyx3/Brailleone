@@ -1,3 +1,5 @@
+import { Groq } from 'groq-sdk';
+
 export interface AICleanupResult {
   cleanedText: string;
   wordCount: number;
@@ -19,11 +21,14 @@ export interface QualityValidationResult {
 }
 
 export class GroqService {
-  private apiKey: string;
+  private groq: Groq | null;
 
   constructor() {
-    this.apiKey = process.env.GROQ_API_KEY || "";
-    if (!this.apiKey) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (apiKey) {
+      this.groq = new Groq({ apiKey });
+    } else {
+      this.groq = null;
       console.warn("GROQ_API_KEY not set - AI features will be disabled");
     }
   }
@@ -35,7 +40,7 @@ export class GroqService {
     const { onProgress } = options;
     
     // If no API key, return text as-is with minimal processing
-    if (!this.apiKey) {
+    if (!this.groq) {
       onProgress?.(1);
       return {
         cleanedText: text,
@@ -70,31 +75,19 @@ Text to clean:
 ${chunks[i]}`;
 
       try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "llama-3.1-70b-versatile",
-            messages: [
-              {
-                role: "user",
-                content: prompt
-              }
-            ],
-            temperature: 0.1,
-            max_tokens: 4096,
-          }),
+        const response = await this.groq!.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 4096,
         });
 
-        if (!response.ok) {
-          throw new Error(`Groq API error: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        const cleanedChunk = result.choices[0]?.message?.content || chunks[i];
+        const cleanedChunk = response.choices[0]?.message?.content || chunks[i];
         cleanedChunks.push(cleanedChunk);
 
         // Track enhancements made
@@ -123,7 +116,7 @@ ${chunks[i]}`;
 
   async validateBrailleQuality(originalText: string, brailleText: string): Promise<QualityValidationResult> {
     // If no API key, return default validation
-    if (!this.apiKey) {
+    if (!this.groq) {
       const originalLines = originalText.split('\n');
       const brailleLines = brailleText.split('\n');
       
@@ -235,31 +228,19 @@ Respond in this exact JSON format:
 }`;
 
     try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama-3.1-70b-versatile",
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 1024,
-        }),
+      const response = await this.groq!.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 1024,
       });
 
-      if (!response.ok) {
-        throw new Error(`Groq API error: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      const content = result.choices[0]?.message?.content || "";
+      const content = response.choices[0]?.message?.content || "";
       
       // Parse JSON response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
