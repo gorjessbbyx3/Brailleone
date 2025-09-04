@@ -154,6 +154,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear failed conversions
+  app.delete("/api/conversions/failed", async (req, res) => {
+    try {
+      // For database storage, clear failed conversions
+      if (process.env.DATABASE_URL) {
+        const { DatabaseStorage } = await import("./dbStorage");
+        const dbStorage = new DatabaseStorage();
+        // Clear failed and error status conversions
+        const result = await (dbStorage as any).db.execute(
+          `DELETE FROM conversions WHERE status IN ('failed', 'error')`
+        );
+        console.log("Cleared failed conversions");
+      }
+      
+      res.json({ message: "Failed conversions cleared successfully" });
+    } catch (error) {
+      console.error("Error clearing failed conversions:", error);
+      res.status(500).json({ error: "Failed to clear conversions" });
+    }
+  });
+
   // Get original text for comparison
   app.get("/api/conversions/:id/text/:type", async (req, res) => {
     try {
@@ -308,7 +329,7 @@ async function processConversion(conversionId: string) {
     const aiResult = await groqService.cleanAndValidateText(extractedText, {
       onProgress: (progress: number) => {
         storage.updateConversion(conversionId, {
-          progress: 30 + (progress * 0.4) // 30-70%
+          progress: Math.round(30 + (progress * 0.4)) // 30-70%
         }).catch(console.error);
       }
     });
@@ -333,7 +354,7 @@ async function processConversion(conversionId: string) {
     const brailleResult = await brailleService.convertToBraille(aiResult.cleanedText, {
       onProgress: (progress: number) => {
         storage.updateConversion(conversionId, {
-          progress: 75 + (progress * 0.15) // 75-90%
+          progress: Math.round(75 + (progress * 0.15)) // 75-90%
         }).catch(console.error);
       }
     });

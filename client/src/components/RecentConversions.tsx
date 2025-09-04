@@ -1,6 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Link, Download } from "lucide-react";
+import { FileText, Link, Download, Trash2 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Conversion } from "@shared/schema";
 
 interface RecentConversionsProps {
@@ -8,8 +10,31 @@ interface RecentConversionsProps {
 }
 
 export default function RecentConversions({ conversions }: RecentConversionsProps) {
+  const { toast } = useToast();
+  
   const handleDownload = (conversionId: string) => {
     window.open(`/api/conversions/${conversionId}/download/braille`, '_blank');
+  };
+
+  const handleClearFailed = async () => {
+    try {
+      await apiRequest("DELETE", "/api/conversions/failed");
+      
+      // Refresh the conversions list
+      queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
+      
+      toast({
+        title: "Cleared Successfully", 
+        description: "All failed conversions have been removed.",
+      });
+    } catch (error) {
+      console.error("Error clearing failed conversions:", error);
+      toast({
+        title: "Clear Failed",
+        description: "Could not clear failed conversions. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const formatTimeAgo = (date: Date | string) => {
@@ -41,10 +66,26 @@ export default function RecentConversions({ conversions }: RecentConversionsProp
     );
   }
 
+  const failedCount = conversions.filter(c => c.status === 'failed' || c.status === 'error').length;
+
   return (
     <Card className="mb-8">
       <CardContent className="p-6">
-        <h3 className="text-lg font-semibold text-card-foreground mb-4">Recent Conversions</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-card-foreground">Recent Conversions</h3>
+          {failedCount > 0 && (
+            <Button
+              onClick={handleClearFailed}
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive/80 border-destructive/20"
+              data-testid="button-clear-failed"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear Failed ({failedCount})
+            </Button>
+          )}
+        </div>
         
         <div className="space-y-3">
           {conversions.map((conversion) => {

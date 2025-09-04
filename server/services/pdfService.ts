@@ -53,10 +53,11 @@ export class PDFService {
 
   private async extractTextWithPdfParse(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
     try {
-      // Import pdf-parse with proper require to avoid initialization issues
-      const pdfParse = require('pdf-parse');
+      // Dynamic import for ES modules compatibility
+      const pdfParse = await import('pdf-parse');
+      const parseFunction = pdfParse.default || pdfParse;
       
-      const data = await pdfParse(buffer);
+      const data = await parseFunction(buffer);
       
       return {
         text: data.text || "",
