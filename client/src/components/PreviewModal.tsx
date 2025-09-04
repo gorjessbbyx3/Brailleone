@@ -96,13 +96,21 @@ export default function PreviewModal({
     }
   };
 
-  const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyToClipboard = async (text: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
       toast({
         title: "Copied!",
         description: `${type} text copied to clipboard`,
       });
-    });
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      toast({
+        title: "Copy Error",
+        description: "Failed to copy text to clipboard",
+        variant: "destructive",
+      });
+    }
   };
 
   const highlightSearchTerm = (text: string, searchTerm: string) => {

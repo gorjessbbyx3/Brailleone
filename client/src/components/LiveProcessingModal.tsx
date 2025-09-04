@@ -58,10 +58,15 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
         setError(null);
         
         // Subscribe to this conversion's updates
-        wsRef.current?.send(JSON.stringify({
-          type: 'subscribe',
-          conversionId
-        }));
+        try {
+          wsRef.current?.send(JSON.stringify({
+            type: 'subscribe',
+            conversionId
+          }));
+        } catch (sendError) {
+          console.error('Error sending WebSocket message:', sendError);
+          setError("Failed to subscribe to updates");
+        }
 
         // Add connection confirmation
         setUpdates([{

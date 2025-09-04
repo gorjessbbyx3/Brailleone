@@ -97,7 +97,14 @@ export function ObjectUploader({
         }]
       };
       
-      onComplete?.(result);
+      if (onComplete) {
+        try {
+          await onComplete(result);
+        } catch (completionError) {
+          console.error('Completion handler error:', completionError);
+          alert('Upload completed but post-processing failed. Please try again.');
+        }
+      }
       
     } catch (error) {
       console.error('Upload error:', error);
