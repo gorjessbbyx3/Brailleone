@@ -8,9 +8,10 @@ export interface TextExtractionResult {
 
 export class PDFService {
   async extractTextFromFile(objectFile: File): Promise<TextExtractionResult> {
+    let buffer: Buffer | undefined;
     try {
       // Download file to buffer
-      const [buffer] = await objectFile.download();
+      [buffer] = await objectFile.download();
       
       // Extract text using pdf-parse with proper error handling
       const result = await this.extractTextWithPdfParse(buffer);
@@ -22,7 +23,8 @@ export class PDFService {
       };
     } catch (error) {
       console.error("Error extracting text from PDF file:", error);
-      throw new Error("Failed to extract text from PDF file");
+      console.error("File size:", buffer?.length || 'unknown');
+      throw new Error(`Failed to extract text from PDF file: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -207,8 +209,29 @@ export class PDFService {
         };
       }
       
+      // Enhanced diagnostic information for failed extraction
+      const diagnosticInfo = {
+        originalSize: buffer.length,
+        isPdfHeader: buffer.subarray(0, 4).toString() === '%PDF',
+        hasContent: buffer.length > 1024,
+        extractionAttempts: ['pdf-parse', 'pdf2json', 'raw-text']
+      };
+      
+      console.warn('PDF text extraction diagnostics:', diagnosticInfo);
+      
       return {
-        text: "PDF text extraction completely failed - document may be image-based, encrypted, or corrupted. Please try uploading a different PDF file.",
+        text: `No readable text found in this PDF document. This usually means:
+
+• The PDF contains scanned images instead of searchable text
+• The document is password-protected or encrypted
+• The file is corrupted or incompatible
+
+To convert this document:
+1. Try using OCR software to make it searchable first
+2. Re-create the PDF from the original source if possible
+3. Check if the PDF requires a password
+
+Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
         pageCount: 1
       };
     }

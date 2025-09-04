@@ -168,14 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For database storage, clear failed conversions
       if (process.env.DATABASE_URL) {
         try {
-          const { DatabaseStorage } = await import("./dbStorage");
-          const dbStorage = new DatabaseStorage();
-          // Clear failed and error status conversions using proper Drizzle ORM methods
-          const { eq, or } = await import("drizzle-orm");
-          const { conversions } = await import("../shared/schema");
-          await (dbStorage as any).db.delete(conversions).where(
-            or(eq(conversions.status, 'failed'), eq(conversions.status, 'error'))
-          );
+          await storage.clearAllConversions(); // Use existing storage interface instead of raw DB operations
         } catch (dbError) {
           console.error("Database error clearing failed conversions:", dbError);
           throw new Error("Database operation failed");
