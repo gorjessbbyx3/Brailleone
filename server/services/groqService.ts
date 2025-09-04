@@ -52,6 +52,36 @@ export class GroqService {
       };
     }
     
+    // Quick test for rate limits before processing
+    try {
+      await this.groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: "test" }],
+        temperature: 0.1,
+        max_tokens: 1,
+      });
+    } catch (testError) {
+      if (testError instanceof Error && testError.message.includes('rate_limit_exceeded')) {
+        console.log('Rate limit detected at start - skipping AI processing entirely');
+        
+        if (conversionId && global.broadcastLiveUpdate) {
+          global.broadcastLiveUpdate(conversionId, {
+            stage: 'ai_review',
+            message: 'AI rate limit reached - proceeding with original text',
+            details: 'Daily AI quota exceeded, continuing without text enhancement',
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        onProgress?.(1);
+        return {
+          cleanedText: text,
+          wordCount: text.split(/\s+/).length,
+          enhancements: ["AI processing skipped due to rate limits - using original text"]
+        };
+      }
+    }
+    
     // Broadcast initial status
     if (conversionId && global.broadcastLiveUpdate) {
       global.broadcastLiveUpdate(conversionId, {
@@ -137,6 +167,16 @@ ${chunks[i]}`;
 
       } catch (error) {
         console.error(`Error processing chunk ${i}:`, error);
+        
+        // Check if it's a rate limit error
+        if (error instanceof Error && error.message.includes('rate_limit_exceeded')) {
+          console.log('Rate limit detected, skipping AI processing for remaining chunks');
+          // Add all remaining chunks without AI processing
+          cleanedChunks.push(...chunks.slice(i));
+          enhancements.push('AI processing limited due to rate limits - using original text');
+          break;
+        }
+        
         // Fallback to original text if API fails
         cleanedChunks.push(chunks[i]);
       }
@@ -195,7 +235,7 @@ ${chunks[i]}`;
   }
 
   async validateBrailleQuality(originalText: string, brailleText: string): Promise<QualityValidationResult> {
-    // If no API key, return default validation
+    // If no API key or rate limited, return default validation
     if (!this.groq) {
       const originalLines = originalText.split('\n');
       const brailleLines = brailleText.split('\n');
@@ -339,6 +379,11 @@ Respond in this exact JSON format:
       }
     } catch (error) {
       console.error("Error validating batch:", error);
+      
+      // If rate limited, skip validation and return defaults
+      if (error instanceof Error && error.message.includes('rate_limit_exceeded')) {
+        console.log('Rate limit hit during validation, using default scores');
+      }
     }
     
     // Fallback: return default validation
