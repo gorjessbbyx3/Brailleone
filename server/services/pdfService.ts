@@ -71,16 +71,23 @@ export class PDFService {
 
   private async extractTextWithPdfParse(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
     try {
-      // First try pdf-parse
+      // First try pdf-parse with better error handling
       let parseFunction: any;
       try {
-        const pdfParse = await import('pdf-parse');
-        parseFunction = pdfParse.default || pdfParse;
-      } catch (importError) {
-        console.error('Failed to import pdf-parse:', importError);
-        // Try OCR extraction instead
-        console.log('Falling back to OCR text extraction...');
-        return await this.extractTextWithOCR(buffer);
+        // Use require instead of import to avoid the test file access issue
+        const pdfParse = require('pdf-parse');
+        parseFunction = pdfParse;
+      } catch (requireError) {
+        try {
+          // Fallback to dynamic import with special handling
+          const pdfParse = await import('pdf-parse');
+          parseFunction = pdfParse.default || pdfParse;
+        } catch (importError) {
+          console.error('Failed to import pdf-parse:', importError);
+          // Try OCR extraction instead
+          console.log('Falling back to OCR text extraction...');
+          return await this.extractTextWithOCR(buffer);
+        }
       }
       
       const options = {
@@ -209,10 +216,17 @@ export class PDFService {
   }
 
   private async extractTextWithOCR(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
-    const maxPages = 5; // Further reduced to prevent memory issues
+    const maxPages = 3; // Reduced further to prevent issues
     
     try {
       console.log('Starting OCR text extraction...');
+      
+      // Validate buffer first
+      if (!buffer || buffer.length === 0) {
+        throw new Error('Invalid buffer for OCR processing');
+      }
+      
+      console.log(`Buffer size: ${buffer.length} bytes`);
       
       // Force garbage collection to free memory
       if (global.gc) {
@@ -228,20 +242,26 @@ export class PDFService {
         throw new Error('PDF to image conversion not available');
       }
       
-      // Initialize pdf2pic converter
+      // Initialize pdf2pic converter with safer settings
       const convert = pdf2pic.fromBuffer(buffer, {
-        density: 100,
-        saveFilename: "page",
+        density: 72, // Reduced density for stability
+        saveFilename: "ocr_page",
         savePath: "/tmp",
         format: "png",
-        width: 600,
-        height: 800
+        width: 500, // Reduced size
+        height: 600 // Reduced size
       });
       
       // Get info about the PDF to know how many pages
       let totalPages = 1;
       try {
-        const parseFunction = (await import('pdf-parse')).default;
+        let parseFunction: any;
+        try {
+          parseFunction = require('pdf-parse');
+        } catch {
+          const pdfParse = await import('pdf-parse');
+          parseFunction = pdfParse.default || pdfParse;
+        }
         const info = await parseFunction(buffer, { max: 0 });
         totalPages = Math.min(info.numpages || 1, maxPages);
       } catch (infoError) {
@@ -254,25 +274,50 @@ export class PDFService {
       const worker = await createWorker(['eng']);
       
       try {
-        // Process each page
+        // Process each page with better error handling
         for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
           try {
-            // Convert page to image
-            const result = await convert(pageNum, { responseType: 'buffer' });
+            console.log(`Converting page ${pageNum} to image...`);
             
-            if (result && result.buffer) {
-              // OCR the image
-              const { data: { text } } = await worker.recognize(result.buffer);
-              allText += text + '\n\n';
-              console.log(`OCR completed for page ${pageNum}/${totalPages}`);
+            // Convert page to image with timeout
+            const conversionPromise = convert(pageNum, { responseType: 'buffer' });
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Page conversion timeout')), 30000)
+            );
+            
+            const result = await Promise.race([conversionPromise, timeoutPromise]) as any;
+            
+            if (result && result.buffer && result.buffer.length > 0) {
+              console.log(`Image size for page ${pageNum}: ${result.buffer.length} bytes`);
+              
+              // OCR the image with timeout
+              const ocrPromise = worker.recognize(result.buffer);
+              const ocrTimeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('OCR timeout')), 30000)
+              );
+              
+              const { data: { text } } = await Promise.race([ocrPromise, ocrTimeoutPromise]) as any;
+              
+              if (text && text.trim().length > 0) {
+                allText += text.trim() + '\n\n';
+                console.log(`OCR completed for page ${pageNum}/${totalPages} - extracted ${text.trim().length} characters`);
+              } else {
+                console.warn(`No text extracted from page ${pageNum}`);
+              }
+            } else {
+              console.warn(`No image buffer received for page ${pageNum}`);
             }
           } catch (pageError) {
             console.warn(`Failed to process page ${pageNum}:`, pageError);
-            // Continue with other pages
+            // Continue with other pages - don't let one page failure stop everything
           }
         }
       } finally {
-        await worker.terminate();
+        try {
+          await worker.terminate();
+        } catch (terminateError) {
+          console.warn('Error terminating OCR worker:', terminateError);
+        }
       }
       
       const finalText = allText.trim();

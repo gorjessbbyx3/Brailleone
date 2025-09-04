@@ -90,8 +90,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ conversionId: conversion.id });
       
-      // Start processing asynchronously
-      processConversion(conversion.id).catch(console.error);
+      // Start processing asynchronously with better error handling
+      processConversion(conversion.id).catch(error => {
+        console.error(`Error processing conversion ${conversion.id}:`, error);
+        // Update conversion status to failed
+        storage.updateConversion(conversion.id, {
+          status: "failed",
+          currentStage: "Error",
+          progress: 0
+        }).catch(updateError => {
+          console.error(`Failed to update conversion status for ${conversion.id}:`, updateError);
+        });
+      });
 
     } catch (error) {
       console.error("Error creating conversion:", error);
@@ -128,8 +138,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ conversionId: conversion.id });
       
-      // Start processing asynchronously
-      processConversion(conversion.id).catch(console.error);
+      // Start processing asynchronously with better error handling
+      processConversion(conversion.id).catch(error => {
+        console.error(`Error processing URL conversion ${conversion.id}:`, error);
+        // Update conversion status to failed
+        storage.updateConversion(conversion.id, {
+          status: "failed",
+          currentStage: "Error",
+          progress: 0
+        }).catch(updateError => {
+          console.error(`Failed to update URL conversion status for ${conversion.id}:`, updateError);
+        });
+      });
 
     } catch (error) {
       console.error("Error creating URL conversion:", error);
