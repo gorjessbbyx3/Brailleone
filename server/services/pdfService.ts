@@ -1,4 +1,5 @@
 import { File } from "@google-cloud/storage";
+import { createWorker } from 'tesseract.js';
 
 export interface TextExtractionResult {
   text: string;
@@ -219,6 +220,18 @@ export class PDFService {
       
       console.warn('PDF text extraction diagnostics:', diagnosticInfo);
       
+      // Try OCR as final fallback for image-based PDFs
+      try {
+        console.log('Attempting OCR extraction for image-based PDF...');
+        const ocrResult = await this.extractTextWithOCR(buffer);
+        if (ocrResult.text && ocrResult.text.trim().length > 50) {
+          console.log(`OCR successful: extracted ${ocrResult.text.length} characters`);
+          return ocrResult;
+        }
+      } catch (ocrError) {
+        console.error('OCR extraction failed:', ocrError);
+      }
+      
       return {
         text: `No readable text found in this PDF document. This usually means:
 
@@ -234,6 +247,68 @@ To convert this document:
 Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
         pageCount: 1
       };
+    }
+  }
+
+  private async extractTextWithOCR(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
+    try {
+      // Convert PDF to images using pdf2pic
+      const pdf2pic = await import('pdf2pic');
+      const convertToPng = pdf2pic.fromBuffer(buffer, {
+        density: 150,           // DPI
+        saveFilename: "page",
+        savePath: "/tmp",      // Temporary path
+        format: "png",
+        width: 2000,           // High resolution for better OCR
+        height: 2000
+      });
+
+      // Convert first 10 pages max to avoid memory issues
+      const pageLimit = 10;
+      const pages = await convertToPng.bulk(-1, { responseType: "buffer" });
+      const actualPages = pages.slice(0, pageLimit);
+      
+      console.log(`Converting ${actualPages.length} pages with OCR...`);
+      
+      // Initialize Tesseract worker
+      const worker = await createWorker('eng');
+      const extractedTexts: string[] = [];
+      
+      // Process each page with OCR
+      for (let i = 0; i < actualPages.length; i++) {
+        try {
+          console.log(`OCR processing page ${i + 1}/${actualPages.length}...`);
+          const pageBuffer = actualPages[i].buffer;
+          if (!pageBuffer) {
+            throw new Error(`No buffer for page ${i + 1}`);
+          }
+          const { data: { text } } = await worker.recognize(pageBuffer);
+          if (text && text.trim().length > 10) {
+            extractedTexts.push(text.trim());
+          }
+        } catch (pageError) {
+          console.error(`OCR failed for page ${i + 1}:`, pageError);
+          extractedTexts.push(`[OCR failed for page ${i + 1}]`);
+        }
+      }
+      
+      await worker.terminate();
+      
+      // Combine all extracted text
+      const fullText = extractedTexts.join('\n\n');
+      
+      if (fullText.trim().length < 50) {
+        throw new Error('OCR extracted insufficient text');
+      }
+      
+      return {
+        text: fullText,
+        pageCount: actualPages.length
+      };
+      
+    } catch (error) {
+      console.error('OCR extraction error:', error);
+      throw error;
     }
   }
 }
