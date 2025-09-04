@@ -263,22 +263,20 @@ Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
         height: 2000
       });
 
-      // Convert first 10 pages max to avoid memory issues
-      const pageLimit = 10;
+      // Convert all pages
       const pages = await convertToPng.bulk(-1, { responseType: "buffer" });
-      const actualPages = pages.slice(0, pageLimit);
       
-      console.log(`Converting ${actualPages.length} pages with OCR...`);
+      console.log(`Converting ${pages.length} pages with OCR...`);
       
       // Initialize Tesseract worker
       const worker = await createWorker('eng');
       const extractedTexts: string[] = [];
       
       // Process each page with OCR
-      for (let i = 0; i < actualPages.length; i++) {
+      for (let i = 0; i < pages.length; i++) {
         try {
-          console.log(`OCR processing page ${i + 1}/${actualPages.length}...`);
-          const pageBuffer = actualPages[i].buffer;
+          console.log(`OCR processing page ${i + 1}/${pages.length}...`);
+          const pageBuffer = pages[i].buffer;
           if (!pageBuffer) {
             throw new Error(`No buffer for page ${i + 1}`);
           }
@@ -303,7 +301,7 @@ Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
       
       return {
         text: fullText,
-        pageCount: actualPages.length
+        pageCount: pages.length
       };
       
     } catch (error) {
