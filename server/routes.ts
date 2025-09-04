@@ -173,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = await (dbStorage as any).db.execute(
           `DELETE FROM conversions WHERE status IN ('failed', 'error')`
         );
-        console.log("Cleared failed conversions");
+        // Failed conversions cleared
       }
       
       res.json({ message: "Failed conversions cleared successfully" });

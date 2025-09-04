@@ -86,14 +86,14 @@ export class PDFService {
       
       // If pdf-parse worked well, return the result
       if (meaningfulText.length > 100) {
-        console.log(`pdf-parse extracted ${meaningfulText.length} characters from ${pageCount} pages`);
+        // Production: Text extracted successfully
         return {
           text: extractedText,
           pageCount: pageCount
         };
       }
       
-      console.warn(`pdf-parse yielded only ${meaningfulText.length} characters from ${pageCount} pages, trying pdf2json`);
+      // Fallback: Using alternative extraction method
       
       // Try pdf2json as alternative
       try {
@@ -134,7 +134,7 @@ export class PDFService {
               }
               
               if (text.trim().length > meaningfulText.length) {
-                console.log(`pdf2json extracted ${text.trim().length} characters (better than pdf-parse)`);
+                // Alternative extraction successful
                 resolve({
                   text: text.trim(),
                   pageCount: pdfData.formImage?.Pages?.length || pageCount
@@ -182,7 +182,7 @@ export class PDFService {
         .trim();
       
       if (cleanedText.length > 100) {
-        console.log(`Raw fallback extraction yielded ${cleanedText.length} characters`);
+        // Fallback extraction used
         return {
           text: cleanedText,
           pageCount: 1
