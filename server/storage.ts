@@ -55,11 +55,20 @@ export class MemStorage implements IStorage {
       braillePages: insertConversion.braillePages || null,
       accuracyScore: insertConversion.accuracyScore || null,
       aiEnhancements: (insertConversion.aiEnhancements as string[]) || null,
-      lineValidations: insertConversion.lineValidations || null,
+      lineValidations: (insertConversion.lineValidations as Array<{
+        lineNumber: number;
+        originalLine: string;
+        brailleLine: string;
+        accuracy: number;
+        issues?: string[];
+      }>) || null,
       originalTextPath: insertConversion.originalTextPath || null,
       cleanedTextPath: insertConversion.cleanedTextPath || null,
       brailleFilePath: insertConversion.brailleFilePath || null,
       aiReportPath: insertConversion.aiReportPath || null,
+      chapters: insertConversion.chapters || null,
+      documentSummary: insertConversion.documentSummary || null,
+      keyTopics: (insertConversion.keyTopics as string[]) || null,
       id,
       createdAt: new Date(),
       completedAt: null,

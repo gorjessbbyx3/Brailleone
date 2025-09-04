@@ -24,7 +24,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createConversion(insertConversion: InsertConversion): Promise<Conversion> {
-    const result = await db.insert(conversions).values(insertConversion).returning();
+    const result = await db.insert(conversions).values([insertConversion]).returning();
     return result[0];
   }
 
