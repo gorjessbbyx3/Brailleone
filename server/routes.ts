@@ -515,37 +515,8 @@ async function processConversion(conversionId: string) {
     // Save AI report
     const aiReportPath = await saveTextToStorage(qualityResult.report, `${conversionId}_report.txt`);
 
-    // Stage 5: Chapter Analysis (Optional Enhancement)
-    try {
-      await storage.updateConversion(conversionId, {
-        currentStage: "Chapter Analysis & Navigation",
-        progress: 98
-      });
-
-      const documentAnalysis = await chapterService.analyzeDocumentStructure(aiResult.cleanedText, {
-        conversionId,
-        onProgress: (progress: number) => {
-          // Don't update main progress, keep it at 98%
-        }
-      });
-
-      // Update chapters with Braille line positions
-      const chaptersWithBraillePositions = chapterService.updateChapterBraillePositions(
-        documentAnalysis.chapters, 
-        brailleResult.brailleText
-      );
-
-      // Update with chapter information
-      await storage.updateConversion(conversionId, {
-        chapters: chaptersWithBraillePositions,
-        documentSummary: documentAnalysis.documentSummary,
-        keyTopics: documentAnalysis.keyTopics,
-      });
-
-    } catch (chapterError) {
-      console.error("Chapter analysis failed (non-critical):", chapterError);
-      // Continue without chapter analysis - don't fail the whole conversion
-    }
+    // Skip Chapter Analysis to save AI tokens
+    console.log('Skipping chapter analysis to conserve AI tokens');
 
     // Final completion
     await storage.updateConversion(conversionId, {
