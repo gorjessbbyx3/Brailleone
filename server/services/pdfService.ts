@@ -28,26 +28,41 @@ export class PDFService {
 
   async extractTextFromUrl(url: string): Promise<TextExtractionResult> {
     try {
-      // Download PDF from URL
+      // Download content from URL
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Failed to download PDF: ${response.statusText}`);
+        throw new Error(`Failed to download content: ${response.statusText}`);
       }
 
+      const contentType = response.headers.get('content-type') || '';
       const buffer = Buffer.from(await response.arrayBuffer());
       
-      // Extract text using pdf-parse with proper error handling
-      const result = await this.extractTextWithPdfParse(buffer);
+      // Check if it's likely a PDF based on content-type or URL extension
+      const isPdf = contentType.includes('application/pdf') || 
+                   url.toLowerCase().endsWith('.pdf') ||
+                   buffer.subarray(0, 4).toString() === '%PDF';
       
-      return {
-        text: result.text,
-        pageCount: result.pageCount,
-        fileSize: buffer.length
-      };
+      if (isPdf) {
+        // Extract text using pdf-parse for PDF content
+        const result = await this.extractTextWithPdfParse(buffer);
+        return {
+          text: result.text,
+          pageCount: result.pageCount,
+          fileSize: buffer.length
+        };
+      } else {
+        // For non-PDF content, extract as plain text
+        const text = buffer.toString('utf8');
+        return {
+          text: text,
+          pageCount: 1,
+          fileSize: buffer.length
+        };
+      }
     } catch (error) {
-      console.error("Error extracting text from PDF URL:", error);
-      throw new Error("Failed to extract text from PDF URL");
+      console.error("Error extracting text from URL:", error);
+      throw new Error("Failed to extract text from URL");
     }
   }
 
