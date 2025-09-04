@@ -20,8 +20,8 @@ export default function RecentConversions({ conversions }: RecentConversionsProp
     try {
       await apiRequest("DELETE", "/api/conversions/failed");
       
-      // Refresh the conversions list
-      queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
+      // Refresh the conversions list - await the invalidation to prevent unhandled promises
+      await queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
       
       toast({
         title: "Cleared Successfully", 
@@ -41,8 +41,8 @@ export default function RecentConversions({ conversions }: RecentConversionsProp
     try {
       await apiRequest("DELETE", "/api/conversions/all");
       
-      // Refresh the conversions list
-      queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
+      // Refresh the conversions list - await the invalidation to prevent unhandled promises
+      await queryClient.invalidateQueries({ queryKey: ['/api/conversions'] });
       
       toast({
         title: "History Cleared", 

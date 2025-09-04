@@ -158,39 +158,57 @@ export class BrailleService {
   }
   
   private extractBrailleFromResponse(html: string): string | null {
+    // Log the response for debugging
+    console.log('Braille response snippet:', html.substring(0, 500));
+    
     // Try multiple patterns to extract the Braille result
     const patterns = [
-      // Look for textarea with the result
-      /<textarea[^>]*name=["']?output["']?[^>]*>([^<]+)<\/textarea>/gi,
-      /<textarea[^>]*id=["']?output["']?[^>]*>([^<]+)<\/textarea>/gi,
-      // Look for div with result class
-      /<div[^>]*class="[^"]*result[^"]*"[^>]*>([^<]+)<\/div>/gi,
-      /<div[^>]*id="[^"]*result[^"]*"[^>]*>([^<]+)<\/div>/gi,
-      // Look for pre tag with Braille
-      /<pre[^>]*>([^<]+)<\/pre>/gi
+      // Common result containers
+      /<div[^>]*id=["']?braille-result["']?[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*braille[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*result[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      // Textarea patterns
+      /<textarea[^>]*name=["']?output["']?[^>]*>([\s\S]*?)<\/textarea>/gi,
+      /<textarea[^>]*id=["']?output["']?[^>]*>([\s\S]*?)<\/textarea>/gi,
+      /<textarea[^>]*>([\s\S]*?)<\/textarea>/gi,
+      // Pre patterns  
+      /<pre[^>]*>([\s\S]*?)<\/pre>/gi,
+      // Span patterns
+      /<span[^>]*class="[^"]*braille[^"]*"[^>]*>([\s\S]*?)<\/span>/gi
     ];
     
     for (const pattern of patterns) {
-      const match = pattern.exec(html);
-      if (match && match[1]) {
-        const brailleText = match[1]
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&amp;/g, '&')
-          .trim();
-        
-        // Check if it contains actual Braille characters
-        if (/[\u2800-\u28FF]/.test(brailleText)) {
-          return brailleText;
+      let match;
+      while ((match = pattern.exec(html)) !== null) {
+        if (match[1]) {
+          const brailleText = match[1]
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')
+            .replace(/<[^>]*>/g, '') // Remove any HTML tags
+            .trim();
+          
+          // Check if it contains actual Braille characters
+          if (/[\u2800-\u28FF]/.test(brailleText)) {
+            console.log('Found Braille text:', brailleText.substring(0, 100));
+            return brailleText;
+          }
         }
       }
     }
     
-    // Fallback: look for any Unicode Braille patterns in the entire response
-    const brailleMatches = html.match(/[\u2800-\u28FF][\u2800-\u28FF\s\n]*/g);
+    // More aggressive search - look for any Unicode Braille patterns
+    const brailleMatches = html.match(/[\u2800-\u28FF][\u2800-\u28FF\s\n\r\t]*/g);
     if (brailleMatches && brailleMatches.length > 0) {
-      return brailleMatches.join('\n').trim();
+      const result = brailleMatches.join('\n').trim();
+      console.log('Found Braille via pattern matching:', result.substring(0, 100));
+      return result;
+    }
+    
+    // If the response contains "braille" text, it might be a status message
+    if (html.toLowerCase().includes('braille')) {
+      console.log('Response contains "braille" but no Braille characters found');
     }
     
     return null;

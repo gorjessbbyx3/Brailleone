@@ -209,10 +209,15 @@ export class PDFService {
   }
 
   private async extractTextWithOCR(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
-    const maxPages = 20; // Limit to prevent memory issues
+    const maxPages = 5; // Further reduced to prevent memory issues
     
     try {
       console.log('Starting OCR text extraction...');
+      
+      // Force garbage collection to free memory
+      if (global.gc) {
+        global.gc();
+      }
       
       // Convert PDF to images using pdf2pic
       let pdf2pic;
