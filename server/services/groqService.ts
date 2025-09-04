@@ -163,6 +163,24 @@ ${chunks[i]}`;
     };
   }
 
+  async makeRequest(
+    prompt: string, 
+    options: { maxTokens?: number; temperature?: number } = {}
+  ): Promise<string> {
+    if (!this.groq) {
+      throw new Error("Groq API not available");
+    }
+
+    const response = await this.groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: options.temperature || 0.1,
+      max_tokens: options.maxTokens || 2048,
+    });
+
+    return response.choices[0]?.message?.content || "";
+  }
+
   async validateBrailleQuality(originalText: string, brailleText: string): Promise<QualityValidationResult> {
     // If no API key, return default validation
     if (!this.groq) {

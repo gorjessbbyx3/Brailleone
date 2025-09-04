@@ -28,6 +28,19 @@ export const conversions = pgTable("conversions", {
   cleanedTextPath: text("cleaned_text_path"),
   brailleFilePath: text("braille_file_path"),
   aiReportPath: text("ai_report_path"),
+  // Chapter analysis and navigation
+  chapters: json("chapters").$type<Array<{
+    id: string;
+    title: string;
+    startPage?: number;
+    endPage?: number;
+    summary: string;
+    keyTopics: string[];
+    brailleStartLine?: number;
+    brailleEndLine?: number;
+  }>>(),
+  documentSummary: text("document_summary"),
+  keyTopics: json("key_topics").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });

@@ -6,6 +6,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { GroqService } from "./services/groqService";
 import { PDFService } from "./services/pdfService";
 import { BrailleService } from "./services/brailleService";
+import { ChapterService } from "./services/chapterService";
 import { insertConversionSchema } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
@@ -15,6 +16,7 @@ const objectStorageService = new ObjectStorageService();
 const groqService = new GroqService();
 const pdfService = new PDFService();
 const brailleService = new BrailleService();
+const chapterService = new ChapterService();
 
 // Global function for broadcasting live updates
 declare global {
