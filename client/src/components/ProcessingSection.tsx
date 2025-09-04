@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Zap, Check, Circle, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Zap, Check, Circle, FileText, Eye } from "lucide-react";
+import LiveProcessingModal from "./LiveProcessingModal";
 import type { Conversion } from "@shared/schema";
 
 interface ProcessingSectionProps {
@@ -8,6 +11,8 @@ interface ProcessingSectionProps {
 }
 
 export default function ProcessingSection({ conversion }: ProcessingSectionProps) {
+  const [showLiveModal, setShowLiveModal] = useState(false);
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -46,13 +51,26 @@ export default function ProcessingSection({ conversion }: ProcessingSectionProps
   return (
     <Card className="mb-8" data-testid="processing-section">
       <CardContent className="p-6">
-        <div className="flex items-center space-x-3 mb-6">
-          <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-            <Zap className="w-4 h-4 text-secondary-foreground pulse-gentle" />
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+              <Zap className="w-4 h-4 text-secondary-foreground pulse-gentle" />
+            </div>
+            <h3 className="text-xl font-semibold text-card-foreground">
+              {conversion.currentStage}
+            </h3>
           </div>
-          <h3 className="text-xl font-semibold text-card-foreground">
-            {conversion.currentStage}
-          </h3>
+          
+          <Button
+            onClick={() => setShowLiveModal(true)}
+            variant="outline"
+            size="sm"
+            className="text-primary hover:text-primary/80 border-primary/20"
+            data-testid="button-watch-live"
+          >
+            <Eye className="w-4 h-4 mr-2" />
+            Watch Live
+          </Button>
         </div>
 
         {/* File Info */}
@@ -171,6 +189,12 @@ export default function ProcessingSection({ conversion }: ProcessingSectionProps
           </p>
         </div>
       </CardContent>
+
+      <LiveProcessingModal
+        isOpen={showLiveModal}
+        onClose={() => setShowLiveModal(false)}
+        conversionId={conversion.id}
+      />
     </Card>
   );
 }

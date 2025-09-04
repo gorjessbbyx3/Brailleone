@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { GroqService } from "./services/groqService";
@@ -14,6 +15,11 @@ const objectStorageService = new ObjectStorageService();
 const groqService = new GroqService();
 const pdfService = new PDFService();
 const brailleService = new BrailleService();
+
+// Global function for broadcasting live updates
+declare global {
+  var broadcastLiveUpdate: (conversionId: string, update: any) => void;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -270,6 +276,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+
+  // WebSocket server for live processing updates
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws: WebSocket) => {
+    console.log('WebSocket client connected for live processing');
+    
+    ws.on('message', (message: string) => {
+      try {
+        const data = JSON.parse(message);
+        if (data.type === 'subscribe' && data.conversionId) {
+          // Subscribe to conversion updates
+          (ws as any).conversionId = data.conversionId;
+          console.log(`Client subscribed to conversion: ${data.conversionId}`);
+        }
+      } catch (error) {
+        console.error('Invalid WebSocket message:', error);
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('WebSocket client disconnected');
+    });
+  });
+
+  // Global function to broadcast live updates to WebSocket clients
+  global.broadcastLiveUpdate = (conversionId: string, update: any) => {
+    wss.clients.forEach((client: WebSocket) => {
+      if (client.readyState === WebSocket.OPEN && (client as any).conversionId === conversionId) {
+        client.send(JSON.stringify({
+          type: 'liveUpdate',
+          conversionId,
+          ...update
+        }));
+      }
+    });
+  };
+
   return httpServer;
 }
 
@@ -327,6 +371,7 @@ async function processConversion(conversionId: string) {
     });
 
     const aiResult = await groqService.cleanAndValidateText(extractedText, {
+      conversionId,
       onProgress: (progress: number) => {
         storage.updateConversion(conversionId, {
           progress: Math.round(30 + (progress * 0.4)) // 30-70%

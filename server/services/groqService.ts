@@ -35,9 +35,12 @@ export class GroqService {
 
   async cleanAndValidateText(
     text: string, 
-    options: { onProgress?: (progress: number) => void } = {}
+    options: { 
+      onProgress?: (progress: number) => void;
+      conversionId?: string;
+    } = {}
   ): Promise<AICleanupResult> {
-    const { onProgress } = options;
+    const { onProgress, conversionId } = options;
     
     // If no API key, return text as-is with minimal processing
     if (!this.groq) {
@@ -49,11 +52,30 @@ export class GroqService {
       };
     }
     
+    // Broadcast initial status
+    if (conversionId && global.broadcastLiveUpdate) {
+      global.broadcastLiveUpdate(conversionId, {
+        stage: 'ai_review',
+        message: `Starting AI text review and cleanup...`,
+        details: `Processing ${text.length.toLocaleString()} characters of text`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // Split text into chunks for processing
     const chunkSize = 4000; // Safe chunk size for Groq API
     const chunks = this.splitTextIntoChunks(text, chunkSize);
     const cleanedChunks: string[] = [];
     const enhancements: string[] = [];
+
+    if (conversionId && global.broadcastLiveUpdate) {
+      global.broadcastLiveUpdate(conversionId, {
+        stage: 'ai_review',
+        message: `Split text into ${chunks.length} chunks for processing`,
+        details: `Each chunk: ~${chunkSize} characters`,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     for (let i = 0; i < chunks.length; i++) {
       onProgress?.(i / chunks.length);
@@ -73,6 +95,15 @@ Return only the cleaned text without any additional commentary.
 
 Text to clean:
 ${chunks[i]}`;
+
+      if (conversionId && global.broadcastLiveUpdate) {
+        global.broadcastLiveUpdate(conversionId, {
+          stage: 'ai_review',
+          message: `Processing chunk ${i + 1} of ${chunks.length}`,
+          details: `Sending to Groq AI for text cleanup and optimization...`,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       try {
         const response = await this.groq!.chat.completions.create({
@@ -95,6 +126,15 @@ ${chunks[i]}`;
           enhancements.push(`Chunk ${i + 1}: Text cleaned and optimized`);
         }
 
+        if (conversionId && global.broadcastLiveUpdate) {
+          global.broadcastLiveUpdate(conversionId, {
+            stage: 'ai_review',
+            message: `Completed chunk ${i + 1} of ${chunks.length}`,
+            details: cleanedChunk !== chunks[i] ? 'Text cleaned and enhanced' : 'Text validated, no changes needed',
+            timestamp: new Date().toISOString()
+          });
+        }
+
       } catch (error) {
         console.error(`Error processing chunk ${i}:`, error);
         // Fallback to original text if API fails
@@ -103,6 +143,15 @@ ${chunks[i]}`;
     }
 
     onProgress?.(1);
+
+    if (conversionId && global.broadcastLiveUpdate) {
+      global.broadcastLiveUpdate(conversionId, {
+        stage: 'ai_review',
+        message: `AI text cleanup completed!`,
+        details: `Processed ${chunks.length} chunks, applied ${enhancements.length} enhancements`,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     const cleanedText = cleanedChunks.join('\n\n');
     const wordCount = cleanedText.split(/\s+/).length;
