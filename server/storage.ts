@@ -66,7 +66,16 @@ export class MemStorage implements IStorage {
       cleanedTextPath: insertConversion.cleanedTextPath || null,
       brailleFilePath: insertConversion.brailleFilePath || null,
       aiReportPath: insertConversion.aiReportPath || null,
-      chapters: insertConversion.chapters || null,
+      chapters: (insertConversion.chapters as Array<{
+        id: string;
+        title: string;
+        startPage?: number;
+        endPage?: number;
+        summary: string;
+        keyTopics: string[];
+        brailleStartLine?: number;
+        brailleEndLine?: number;
+      }>) || null,
       documentSummary: insertConversion.documentSummary || null,
       keyTopics: (insertConversion.keyTopics as string[]) || null,
       id,
