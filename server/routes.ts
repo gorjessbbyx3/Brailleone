@@ -408,8 +408,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
+// Track active conversions to prevent memory overload
+const activeConversions = new Set<string>();
+const MAX_CONCURRENT_CONVERSIONS = 2;
+
 // Main conversion processing pipeline
 async function processConversion(conversionId: string) {
+  // Prevent too many concurrent conversions
+  if (activeConversions.size >= MAX_CONCURRENT_CONVERSIONS) {
+    console.warn(`Too many active conversions (${activeConversions.size}), queueing ${conversionId}`);
+    await storage.updateConversion(conversionId, {
+      status: "queued",
+      currentStage: "Waiting in queue",
+      progress: 5
+    });
+    
+    // Wait for an active conversion to finish
+    while (activeConversions.size >= MAX_CONCURRENT_CONVERSIONS) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+    }
+  }
+  
+  activeConversions.add(conversionId);
+  console.log(`Starting conversion ${conversionId} (${activeConversions.size} active)`);
+  
   try {
     let conversion = await storage.getConversion(conversionId);
     if (!conversion) return;
@@ -556,6 +578,15 @@ async function processConversion(conversionId: string) {
       currentStage: "Error",
       progress: 0
     }).catch(console.error);
+  } finally {
+    // Always remove from active conversions when done
+    activeConversions.delete(conversionId);
+    console.log(`Finished conversion ${conversionId} (${activeConversions.size} still active)`);
+    
+    // Force garbage collection after each conversion
+    if (global.gc) {
+      global.gc();
+    }
   }
 }
 

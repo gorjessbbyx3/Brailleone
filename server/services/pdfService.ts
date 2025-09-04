@@ -129,8 +129,13 @@ export class PDFService {
         console.log('Not a PDF file, attempting direct text extraction');
         const textContent = buffer.toString('utf8');
         if (textContent && textContent.length > 10) {
+          // Limit text size to prevent memory issues
+          const maxSize = 100000; // 100KB limit
+          const limitedText = textContent.length > maxSize 
+            ? textContent.substring(0, maxSize) + '\n[Text truncated]'
+            : textContent;
           return {
-            text: textContent,
+            text: limitedText,
             pageCount: 1
           };
         }
@@ -150,14 +155,15 @@ export class PDFService {
         throw new Error('PDF to image conversion not available');
       }
 
-      // Initialize pdf2pic converter
+      // Initialize pdf2pic converter with memory-safe settings
       const convert = pdf2pic.fromBuffer(buffer, {
-        density: 150, // Higher density for better OCR
-        saveFilename: "ocr_page",
-        savePath: "/tmp",
-        format: "png",
-        width: 800, 
-        height: 1000
+        density: 100, // Reduced density to save memory
+        saveFilename: "ocr_page_temp",
+        savePath: "/tmp", 
+        format: "jpeg", // JPEG uses less memory than PNG
+        width: 400,     // Smaller width
+        height: 500,    // Smaller height
+        quality: 85     // Compress to reduce file size
       });
       
       // Assume 1 page for now since we can't use pdf-parse to get count
@@ -184,17 +190,31 @@ export class PDFService {
             if (result && result.buffer && result.buffer.length > 0) {
               console.log(`Image size for page ${pageNum}: ${result.buffer.length} bytes`);
               
+              // Limit buffer size to prevent memory issues
+              if (result.buffer.length > 2000000) { // 2MB limit
+                console.warn(`Image buffer too large (${result.buffer.length} bytes), skipping OCR`);
+                continue;
+              }
+              
               // OCR the image with timeout
               const ocrPromise = worker.recognize(result.buffer);
               const ocrTimeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('OCR timeout')), 30000)
+                setTimeout(() => reject(new Error('OCR timeout')), 20000) // Reduced timeout
               );
               
               const { data: { text } } = await Promise.race([ocrPromise, ocrTimeoutPromise]) as any;
               
+              // Clear the image buffer immediately after OCR
+              result.buffer = null;
+              
               if (text && text.trim().length > 0) {
                 allText += text.trim() + '\n\n';
                 console.log(`OCR completed for page ${pageNum}/${totalPages} - extracted ${text.trim().length} characters`);
+                
+                // Force garbage collection after each page
+                if (global.gc) {
+                  global.gc();
+                }
               } else {
                 console.warn(`No text extracted from page ${pageNum}`);
               }
@@ -221,12 +241,23 @@ export class PDFService {
         // Try direct text extraction as final fallback
         const directText = buffer.toString('utf8');
         if (directText && directText.length > 10) {
+          const maxSize = 10000; // 10KB limit for fallback
           return {
-            text: directText.substring(0, 5000), // Limit size
+            text: directText.substring(0, maxSize),
             pageCount: 1
           };
         }
         throw new Error('OCR extracted very little text');
+      }
+      
+      // Limit final text size
+      const maxFinalSize = 200000; // 200KB limit
+      if (finalText.length > maxFinalSize) {
+        console.warn(`OCR result too large (${finalText.length} chars), truncating to ${maxFinalSize}`);
+        return {
+          text: finalText.substring(0, maxFinalSize) + '\n[Text truncated]',
+          pageCount: totalPages
+        };
       }
       
       console.log(`OCR extraction complete. Extracted ${finalText.length} characters.`);

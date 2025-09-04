@@ -27,25 +27,22 @@ export class BrailleService {
   ): Promise<BrailleConversionResult> {
     const { onProgress } = options;
     
-    // Try advanced online translator first for Grade 2 Braille
-    try {
-      console.log('Using brailletranslator.org for Grade 2 Braille conversion...');
-      onProgress?.(0.1);
-      
-      const result = await this.convertWithOnlineTranslator(text);
-      onProgress?.(1.0);
-      
-      if (result && result.brailleText.trim().length > 0) {
-        console.log('Online Grade 2 Braille conversion successful');
-        return result;
-      }
-    } catch (error) {
-      console.warn('Online translator failed, falling back to local conversion:', error);
+    // Limit text size to prevent memory issues
+    const maxTextLength = 50000; // 50KB limit
+    let processText = text;
+    if (text.length > maxTextLength) {
+      console.warn(`Text too long (${text.length} chars), truncating to ${maxTextLength} chars`);
+      processText = text.substring(0, maxTextLength) + '\n\n[Text truncated due to length]';
     }
     
-    // Fallback to local Grade 1 conversion
-    console.log('Using local Grade 1 Braille conversion...');
-    return this.convertWithLocalMapping(text, options);
+    // Skip online translator for now due to API issues, go directly to local
+    console.log('Using local Grade 1 Braille conversion (online translator disabled)...');
+    onProgress?.(0.1);
+    
+    const result = this.convertWithLocalMapping(processText, options);
+    onProgress?.(1.0);
+    
+    return result;
   }
   
   private async convertWithOnlineTranslator(text: string): Promise<BrailleConversionResult> {
