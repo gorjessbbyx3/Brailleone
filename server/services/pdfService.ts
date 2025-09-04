@@ -72,15 +72,16 @@ export class PDFService {
   private async extractTextWithPdfParse(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
     try {
       // First try pdf-parse
-      let pdfParse;
+      let parseFunction: any;
       try {
-        pdfParse = await import('pdf-parse');
+        const pdfParse = await import('pdf-parse');
+        parseFunction = pdfParse.default || pdfParse;
       } catch (importError) {
         console.error('Failed to import pdf-parse:', importError);
-        throw new Error('PDF parsing library not available');
+        // Try OCR extraction instead
+        console.log('Falling back to OCR text extraction...');
+        return await this.extractTextWithOCR(buffer);
       }
-      
-      const parseFunction = pdfParse.default || pdfParse;
       
       const options = {
         max: 0,
@@ -123,192 +124,168 @@ export class PDFService {
         
         return new Promise((resolve) => {
           const pdfParser = new PDFParser();
-          let extractedContent = '';
+          let extractedText = "";
           
-          pdfParser.on("pdfParser_dataError", () => {
-            // If pdf2json also fails, use the original pdf-parse result
+          pdfParser.on("pdfParser_dataError", (errData: any) => {
+            console.error('PDF2JSON error:', errData);
             resolve({
-              text: extractedText || "Multiple PDF extraction methods failed - document may be image-based or encrypted",
-              pageCount: pageCount
+              text: "PDF parsing failed with pdf2json",
+              pageCount: 1
             });
           });
           
           pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
             try {
-              // Extract text from pdf2json data structure
-              let text = '';
-              if (pdfData.formImage && pdfData.formImage.Pages) {
-                for (const page of pdfData.formImage.Pages) {
+              if (pdfData && pdfData.formImage && pdfData.formImage.Pages) {
+                const pages = pdfData.formImage.Pages;
+                let allText = '';
+                
+                for (const page of pages) {
                   if (page.Texts) {
-                    for (const textItem of page.Texts) {
-                      if (textItem.R) {
-                        for (const run of textItem.R) {
+                    for (const textObj of page.Texts) {
+                      if (textObj.R) {
+                        for (const run of textObj.R) {
                           if (run.T) {
-                            text += decodeURIComponent(run.T) + ' ';
+                            allText += decodeURIComponent(run.T) + ' ';
                           }
                         }
                       }
                     }
-                    text += '\n'; // Add newline after each page
                   }
+                  allText += '\n';
                 }
-              }
-              
-              if (text.trim().length > meaningfulText.length) {
-                // Alternative extraction successful
+                
                 resolve({
-                  text: text.trim(),
-                  pageCount: pdfData.formImage?.Pages?.length || pageCount
+                  text: allText || "No readable text found in PDF",
+                  pageCount: pages.length || 1
                 });
               } else {
                 resolve({
-                  text: extractedText || "PDF text extraction yielded minimal content",
-                  pageCount: pageCount
+                  text: "PDF structure not readable",
+                  pageCount: 1
                 });
               }
             } catch (parseError) {
+              console.error('Error processing PDF data:', parseError);
               resolve({
-                text: extractedText || "PDF parsing error occurred",
-                pageCount: pageCount
+                text: "Error processing PDF structure",
+                pageCount: 1
               });
             }
           });
           
-          // Parse the buffer
+          // Start parsing
           pdfParser.parseBuffer(buffer);
-          
-          // Timeout fallback
-          setTimeout(() => {
-            resolve({
-              text: extractedText || "PDF extraction timeout",
-              pageCount: pageCount
-            });
-          }, 10000); // 10 second timeout
         });
       } catch (pdf2jsonError) {
-        console.error("pdf2json not available:", pdf2jsonError);
+        console.error('PDF2JSON processing error:', pdf2jsonError);
+        
+        // Final fallback: OCR if everything else fails
+        if (meaningfulText.length < 50) {
+          console.log('Trying OCR as final fallback...');
+          try {
+            return await this.extractTextWithOCR(buffer);
+          } catch (ocrError) {
+            console.error('OCR fallback also failed:', ocrError);
+          }
+        }
+        
         return {
-          text: extractedText || "PDF extraction failed - multiple methods attempted",
+          text: extractedText || "No readable text found in PDF",
           pageCount: pageCount
         };
       }
     } catch (error) {
-      console.error("Error with PDF parsing:", error);
-      
-      // Final fallback: raw text extraction
-      const rawText = buffer.toString('utf8');
-      const cleanedText = rawText
-        .replace(/[^\x20-\x7E\s\n\r\t]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      
-      if (cleanedText.length > 100) {
-        // Fallback extraction used
-        return {
-          text: cleanedText,
-          pageCount: 1
-        };
-      }
-      
-      // Enhanced diagnostic information for failed extraction
-      const diagnosticInfo = {
-        originalSize: buffer.length,
-        isPdfHeader: buffer.subarray(0, 4).toString() === '%PDF',
-        hasContent: buffer.length > 1024,
-        extractionAttempts: ['pdf-parse', 'pdf2json', 'raw-text']
-      };
-      
-      console.warn('PDF text extraction diagnostics:', diagnosticInfo);
-      
-      // Try OCR as final fallback for image-based PDFs
+      console.error('PDF parsing error:', error);
+      // Final fallback to OCR
       try {
-        console.log('Attempting OCR extraction for image-based PDF...');
-        const ocrResult = await this.extractTextWithOCR(buffer);
-        if (ocrResult.text && ocrResult.text.trim().length > 50) {
-          console.log(`OCR successful: extracted ${ocrResult.text.length} characters`);
-          return ocrResult;
-        }
+        console.log('Attempting OCR extraction as last resort...');
+        return await this.extractTextWithOCR(buffer);
       } catch (ocrError) {
-        console.error('OCR extraction failed:', ocrError);
+        console.error('OCR extraction also failed:', ocrError);
+        throw new Error('All text extraction methods failed');
       }
-      
-      return {
-        text: `No readable text found in this PDF document. This usually means:
-
-• The PDF contains scanned images instead of searchable text
-• The document is password-protected or encrypted
-• The file is corrupted or incompatible
-
-To convert this document:
-1. Try using OCR software to make it searchable first
-2. Re-create the PDF from the original source if possible
-3. Check if the PDF requires a password
-
-Document size: ${(buffer.length / 1024).toFixed(1)}KB`,
-        pageCount: 1
-      };
     }
   }
 
   private async extractTextWithOCR(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
+    const maxPages = 20; // Limit to prevent memory issues
+    
     try {
+      console.log('Starting OCR text extraction...');
+      
       // Convert PDF to images using pdf2pic
-      const pdf2pic = await import('pdf2pic');
-      const convertToPng = pdf2pic.fromBuffer(buffer, {
-        density: 150,           // DPI
+      let pdf2pic;
+      try {
+        pdf2pic = await import('pdf2pic');
+      } catch (importError) {
+        console.error('Failed to import pdf2pic:', importError);
+        throw new Error('PDF to image conversion not available');
+      }
+      
+      // Initialize pdf2pic converter
+      const convert = pdf2pic.fromBuffer(buffer, {
+        density: 100,
         saveFilename: "page",
-        savePath: "/tmp",      // Temporary path
+        savePath: "/tmp",
         format: "png",
-        width: 2000,           // High resolution for better OCR
-        height: 2000
+        width: 600,
+        height: 800
       });
-
-      // Convert pages in smaller batches to avoid memory issues
-      const maxPages = 20; // Limit to 20 pages max for memory safety
-      const pages = await convertToPng.bulk(-1, { responseType: "buffer" });
-      const limitedPages = pages.slice(0, maxPages);
       
-      console.log(`Converting ${limitedPages.length} pages with OCR (limited from ${pages.length} for memory)...`);
+      // Get info about the PDF to know how many pages
+      let totalPages = 1;
+      try {
+        const parseFunction = (await import('pdf-parse')).default;
+        const info = await parseFunction(buffer, { max: 0 });
+        totalPages = Math.min(info.numpages || 1, maxPages);
+      } catch (infoError) {
+        console.warn('Could not get page count, assuming 1 page');
+      }
       
-      // Initialize Tesseract worker
-      const worker = await createWorker('eng');
-      const extractedTexts: string[] = [];
+      console.log(`Processing ${totalPages} pages with OCR...`);
       
-      // Process each page with OCR
-      for (let i = 0; i < limitedPages.length; i++) {
-        try {
-          console.log(`OCR processing page ${i + 1}/${limitedPages.length}...`);
-          const pageBuffer = limitedPages[i].buffer;
-          if (!pageBuffer) {
-            throw new Error(`No buffer for page ${i + 1}`);
+      let allText = '';
+      const worker = await createWorker(['eng']);
+      
+      try {
+        // Process each page
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+          try {
+            // Convert page to image
+            const result = await convert(pageNum, { responseType: 'buffer' });
+            
+            if (result && result.buffer) {
+              // OCR the image
+              const { data: { text } } = await worker.recognize(result.buffer);
+              allText += text + '\n\n';
+              console.log(`OCR completed for page ${pageNum}/${totalPages}`);
+            }
+          } catch (pageError) {
+            console.warn(`Failed to process page ${pageNum}:`, pageError);
+            // Continue with other pages
           }
-          const { data: { text } } = await worker.recognize(pageBuffer);
-          if (text && text.trim().length > 10) {
-            extractedTexts.push(text.trim());
-          }
-        } catch (pageError) {
-          console.error(`OCR failed for page ${i + 1}:`, pageError);
-          extractedTexts.push(`[OCR failed for page ${i + 1}]`);
         }
+      } finally {
+        await worker.terminate();
       }
       
-      await worker.terminate();
+      const finalText = allText.trim();
       
-      // Combine all extracted text
-      const fullText = extractedTexts.join('\n\n');
-      
-      if (fullText.trim().length < 50) {
-        throw new Error('OCR extracted insufficient text');
+      if (finalText.length < 10) {
+        throw new Error('OCR extracted very little text');
       }
+      
+      console.log(`OCR extraction complete. Extracted ${finalText.length} characters.`);
       
       return {
-        text: fullText + (pages.length > maxPages ? `\n\n[Note: OCR processed ${maxPages} of ${pages.length} pages for memory efficiency]` : ''),
-        pageCount: limitedPages.length
+        text: finalText,
+        pageCount: totalPages
       };
       
     } catch (error) {
-      console.error('OCR extraction error:', error);
-      throw error;
+      console.error('OCR extraction failed:', error);
+      throw new Error(`OCR text extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

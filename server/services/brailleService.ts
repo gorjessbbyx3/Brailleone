@@ -49,46 +49,73 @@ export class BrailleService {
   }
   
   private async convertWithOnlineTranslator(text: string): Promise<BrailleConversionResult> {
-    // Split large text into chunks to avoid issues
-    const maxChunkSize = 3000; // Conservative chunk size
+    // Use a simpler API approach - test with direct translation
+    const maxChunkSize = 2000; // Conservative chunk size
     const chunks = this.splitIntoChunks(text, maxChunkSize);
     const brailleChunks: string[] = [];
     
     for (const chunk of chunks) {
-      // Prepare the request to brailletranslator.org
-      const formData = new URLSearchParams();
-      formData.append('text', chunk.trim());
-      formData.append('grade', '2'); // Use Grade 2 Braille for contractions
-      formData.append('lang', 'en-us'); // English US
-      
-      const response = await fetch(this.BRAILLE_TRANSLATOR_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Mozilla/5.0 (compatible; BrailleConvert/1.0)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5'
-        },
-        body: formData
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Translator API error: ${response.status} ${response.statusText}`);
+      try {
+        // Try different API endpoints for brailletranslator.org
+        const endpoints = [
+          { url: `${this.BRAILLE_TRANSLATOR_URL}/api/translate`, params: { text: chunk, grade: 2, lang: 'en-us' } },
+          { url: `${this.BRAILLE_TRANSLATOR_URL}/translate`, params: { text: chunk, grade: 2, lang: 'en-us' } }
+        ];
+        
+        let brailleText: string | null = null;
+        
+        for (const endpoint of endpoints) {
+          try {
+            const formData = new URLSearchParams();
+            Object.entries(endpoint.params).forEach(([key, value]) => {
+              formData.append(key, value.toString());
+            });
+            
+            const response = await fetch(endpoint.url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Mozilla/5.0 (compatible; BrailleConvert/1.0)'
+              },
+              body: formData
+            });
+            
+            if (response.ok) {
+              const result = await response.text();
+              brailleText = this.extractBrailleFromResponse(result);
+              
+              if (brailleText && brailleText.trim().length > 0) {
+                break; // Success with this endpoint
+              }
+            }
+          } catch (endpointError) {
+            console.log(`Endpoint ${endpoint.url} failed:`, endpointError);
+          }
+        }
+        
+        // If API endpoints don't work, try the main page form submission
+        if (!brailleText) {
+          brailleText = await this.tryMainPageSubmission(chunk);
+        }
+        
+        if (!brailleText || brailleText.trim().length === 0) {
+          throw new Error('Could not extract Braille from any endpoint');
+        }
+        
+        brailleChunks.push(brailleText.trim());
+        
+        // Small delay between requests
+        if (chunks.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+      } catch (chunkError) {
+        console.warn(`Failed to convert chunk: ${chunkError}`);
+        // Continue with remaining chunks rather than failing completely
       }
-      
-      const html = await response.text();
-      const brailleText = this.extractBrailleFromResponse(html);
-      
-      if (!brailleText || brailleText.trim().length === 0) {
-        throw new Error('Could not extract Braille from response');
-      }
-      
-      brailleChunks.push(brailleText.trim());
-      
-      // Small delay between requests to be respectful
-      if (chunks.length > 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    }
+    
+    if (brailleChunks.length === 0) {
+      throw new Error('Failed to convert any text chunks');
     }
     
     const fullBrailleText = brailleChunks.join('\n\n');
@@ -99,6 +126,35 @@ export class BrailleService {
       brailleText: fullBrailleText,
       pageCount
     };
+  }
+  
+  private async tryMainPageSubmission(text: string): Promise<string | null> {
+    try {
+      // Submit to the main page form
+      const formData = new URLSearchParams();
+      formData.append('text', text);
+      formData.append('lang', 'en-us-g2'); // English US Grade 2
+      
+      const response = await fetch(this.BRAILLE_TRANSLATOR_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Referer': this.BRAILLE_TRANSLATOR_URL
+        },
+        body: formData
+      });
+      
+      if (response.ok) {
+        const html = await response.text();
+        return this.extractBrailleFromResponse(html);
+      }
+    } catch (error) {
+      console.warn('Main page submission failed:', error);
+    }
+    
+    return null;
   }
   
   private extractBrailleFromResponse(html: string): string | null {
