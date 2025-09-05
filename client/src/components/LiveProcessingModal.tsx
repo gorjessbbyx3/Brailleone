@@ -55,9 +55,24 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       
       wsRef.current = new WebSocket(wsUrl);
+      
+      // Add connection timeout to prevent hanging promises
+      const connectionTimeout = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
+          console.warn('WebSocket connection timeout');
+          try {
+            wsRef.current.close();
+          } catch (e) {
+            console.error('Error closing timed out WebSocket:', e);
+          }
+          setError("Connection timeout - live updates disabled");
+          setIsConnected(false);
+        }
+      }, 10000); // 10 second timeout
 
       wsRef.current.onopen = () => {
         console.log("WebSocket connected for live processing");
+        clearTimeout(connectionTimeout); // Clear timeout on successful connection
         setIsConnected(true);
         setError(null);
         
@@ -104,16 +119,18 @@ export default function LiveProcessingModal({ isOpen, onClose, conversionId }: L
 
       wsRef.current.onclose = (event) => {
         console.log("WebSocket disconnected", event);
+        clearTimeout(connectionTimeout); // Clear timeout on close
         setIsConnected(false);
         
         // If the connection was closed unexpectedly, show an error
-        if (event.code !== 1000 && event.code !== 1001) {
+        if (event.code !== 1000 && event.code !== 1001 && event.code !== 1006) {
           setError(`Connection lost unexpectedly (code: ${event.code})`);
         }
       };
 
       wsRef.current.onerror = (error) => {
         console.error("WebSocket error:", error);
+        clearTimeout(connectionTimeout); // Clear timeout on error
         setError("Connection error - live updates may not be available");
         setIsConnected(false);
         

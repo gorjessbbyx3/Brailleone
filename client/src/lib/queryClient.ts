@@ -13,21 +13,32 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
     const res = await fetch(url, {
       method,
       headers: data ? { "Content-Type": "application/json" } : {},
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
     await throwIfResNotOk(res);
     return res;
   } catch (error) {
-    // Re-throw with more context for network errors
+    // Handle specific error types to prevent unhandled rejections
     if (error instanceof TypeError) {
       throw new Error(`Network error: ${error.message}`);
     }
-    throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Request timeout: ${url}`);
+    }
+    if (error instanceof Error) {
+      throw new Error(`API request failed: ${error.message}`);
+    }
+    throw new Error(`Unknown API error for ${url}`);
   }
 }
 
@@ -38,9 +49,15 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const res = await fetch(queryKey.join("/") as string, {
         credentials: "include",
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (unauthorizedBehavior === "returnNull" && res.status === 401) {
         return null;
@@ -49,11 +66,17 @@ export const getQueryFn: <T>(options: {
       await throwIfResNotOk(res);
       return await res.json();
     } catch (error) {
-      // Re-throw with more context for network errors
+      // Handle specific error types to prevent unhandled rejections
       if (error instanceof TypeError) {
         throw new Error(`Network error for ${queryKey.join("/")}: ${error.message}`);
       }
-      throw error;
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error(`Query timeout for ${queryKey.join("/")}`);
+      }
+      if (error instanceof Error) {
+        throw new Error(`Query failed for ${queryKey.join("/")}: ${error.message}`);
+      }
+      throw new Error(`Unknown query error for ${queryKey.join("/")}`);
     }
   };
 

@@ -490,14 +490,7 @@ async function processConversion(conversionId: string) {
           progress: Math.round(30 + (progress * 0.4)) // 30-70%
         }).catch((err) => {
           console.error('Error updating AI progress:', err);
-          // Broadcast error to live updates if available
-          if (typeof global.broadcastLiveUpdate === 'function') {
-            global.broadcastLiveUpdate(conversionId, {
-              stage: 'error',
-              message: 'Progress update failed',
-              timestamp: new Date().toISOString()
-            });
-          }
+          // Silently continue if progress update fails to prevent unhandled rejections
         });
       }
     });
@@ -525,14 +518,7 @@ async function processConversion(conversionId: string) {
           progress: Math.round(75 + (progress * 0.15)) // 75-90%
         }).catch((err) => {
           console.error('Error updating Braille conversion progress:', err);
-          // Broadcast error to live updates if available
-          if (typeof global.broadcastLiveUpdate === 'function') {
-            global.broadcastLiveUpdate(conversionId, {
-              stage: 'error',
-              message: 'Braille conversion progress update failed',
-              timestamp: new Date().toISOString()
-            });
-          }
+          // Silently continue if progress update fails to prevent unhandled rejections
         });
       }
     });
